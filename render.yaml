@@ -13,34 +13,27 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        sync: false # Cole aqui a URL de conexão do seu banco MySQL
+        sync: false # Cole aqui a URL de conexão do seu banco de dados MySQL
       - key: CLIENT_URL
-        fromService:
-          type: static
-          name: frontend-client
-          property: host
+        sync: false # Cole a URL pública do seu front-end (ex: https://frontend-client.onrender.com)
 
   # -------------------------------------------------------------
   # 2. SERVIÇO FRONT-END (React Vite Static Site)
   # -------------------------------------------------------------
-  - type: static
+  - type: web
     name: frontend-client
+    runtime: static
     rootDir: client
     buildCommand: npm install && npm run build
     staticPublishPath: dist
-    plan: free
     routes:
-      # Regra SPA para o React Router redirecionar para index.html
+      # Regra SPA para o React redirecionar para index.html
       - type: rewrite
         source: /*
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: backend-api
-          property: host
-          path: /api
+        sync: false # Cole a URL pública da sua API (ex: https://backend-api.onrender.com/api)
 
   # -------------------------------------------------------------
   # 3. INTERFACE WEB DO BANCO DE DADOS (Adminer Web UI)
