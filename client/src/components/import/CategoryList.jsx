@@ -1,0 +1,3 @@
+export function CategoryList({ categories, colors, transactions, fileLoaded }) {
+  return <section><h2 className="section-label">Categorias disponíveis</h2><div className="flex flex-col gap-1.5">{categories.map((category) => <div key={category} className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-800"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colors[category] || '#94a3b8' }} /><span>{category}</span>{fileLoaded && <span className="ml-auto font-mono text-xs font-medium text-slate-400">{transactions.filter((transaction) => transaction.category === category).length}</span>}</div>)}</div></section>;
+}
