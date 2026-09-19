@@ -51,6 +51,22 @@ export async function initDatabase() {
     `);
     console.log('📦 Tabela `users` verificada/criada no MySQL.');
 
+    // Cria a tabela de regras de classificação se não existir
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS classification_rules (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        keywords JSON NOT NULL,
+        priority INT DEFAULT 0,
+        active BOOLEAN DEFAULT TRUE,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_rules_priority_active (active, priority DESC)
+      )
+    `);
+    console.log('📦 Tabela `classification_rules` verificada/criada no MySQL.');
+
     connection.release();
     return true;
   } catch (error) {
