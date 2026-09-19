@@ -35,3 +35,5 @@ Thumbs.db
 
 # Agentes e ferramentas locais
 /.agents/
+agents.md
+contributing.md
