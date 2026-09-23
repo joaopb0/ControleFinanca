@@ -5,6 +5,9 @@ export function UploadPanel({
   onDragLeave,
   onDrop,
   onFileChange,
+  onUpload,
+  isUploading,
+  selectedFileName,
 }) {
   return (
     <section>
@@ -32,10 +35,24 @@ export function UploadPanel({
         <p className="text-xs text-slate-400">
           Arraste e solte ou clique para selecionar
         </p>
+        {selectedFileName && (
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+            {selectedFileName}
+          </span>
+        )}
         <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600">
           .CSV format
         </span>
       </div>
+
+      <button
+        type="button"
+        onClick={onUpload}
+        disabled={!selectedFileName || isUploading}
+        className="mt-4 w-full rounded-xl bg-blue-900 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-900/20 transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+      >
+        {isUploading ? 'Processando...' : 'Processar Extrato'}
+      </button>
     </section>
   );
 }

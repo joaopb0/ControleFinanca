@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
-import { CATEGORIES, CATEGORY_COLORS, MOCK_TRANSACTIONS } from '../../data/mockData';
+import { useRef, useState } from 'react';
+import { CATEGORIES, CATEGORY_COLORS } from '../../data/mockData';
 import { CategoryList } from '../../components/import/CategoryList';
 import { CreateCategoryModal } from '../../components/import/CreateCategoryModal';
 import { ImportHeader } from '../../components/import/ImportHeader';
@@ -8,6 +8,8 @@ import { UploadPanel } from '../../components/import/UploadPanel';
 
 export function ImportScreen() {
   const [transactions, setTransactions] = useState([]);
+  const [arquivo, setArquivo] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [openId, setOpenId] = useState(null);
   const [customCategories, setCustomCategories] = useState([]);
@@ -26,14 +28,61 @@ export function ImportScreen() {
   };
   const fileLoaded = transactions.length > 0;
 
-  const loadMockData = useCallback(() => {
-    setTransactions(MOCK_TRANSACTIONS);
-  }, []);
+  const handleFileChange = (event) => {
+    const selectedFile = event.target.files?.[0] ?? null;
+    setArquivo(selectedFile);
+  };
+
+  const handleUpload = async () => {
+    if (!arquivo) {
+      alert('Selecione um arquivo CSV primeiro!');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', arquivo);
+
+    setIsUploading(true);
+
+    try {
+      const response = await fetch('http://localhost:3000/api/upload-csv', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.erro || data?.error || 'Erro ao processar o CSV');
+      }
+
+      const rows = Array.isArray(data?.dados) ? data.dados : [];
+      const normalizedTransactions = rows.map((row, index) => ({
+        id: row.id ?? `csv-${Date.now()}-${index}`,
+        date: row.date ?? row.Data ?? row.data ?? '',
+        description: row.description ?? row.Descricao ?? row.descricao ?? row['Descrição'] ?? '',
+        value: Number(row.value ?? row.Valor ?? row.valor ?? 0),
+        category: row.category ?? 'Outros',
+      }));
+
+      setTransactions(normalizedTransactions);
+      setOpenId(null);
+    } catch (error) {
+      console.error('Erro ao enviar o arquivo:', error);
+      alert(error.message || 'Erro ao processar o CSV');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleDrop = (event) => {
     event.preventDefault();
     setIsDragOver(false);
-    loadMockData();
+
+    const droppedFile = event.dataTransfer?.files?.[0] ?? null;
+    if (!droppedFile) return;
+
+    setArquivo(droppedFile);
   };
 
   const updateCategory = (id, category) => {
@@ -64,7 +113,10 @@ export function ImportScreen() {
               }}
               onDragLeave={() => setIsDragOver(false)}
               onDrop={handleDrop}
-              onFileChange={loadMockData}
+              onFileChange={handleFileChange}
+              onUpload={handleUpload}
+              isUploading={isUploading}
+              selectedFileName={arquivo?.name ?? ''}
             />
 
             <div className="rounded-2xl bg-blue-900 p-4 text-white">
