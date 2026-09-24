@@ -4,12 +4,12 @@ import { NavigationHeader } from './components/navigation/NavigationHeader';
 import { ImportScreen } from './pages/Import/ImportScreen';
 import { ClassifierScreen } from './pages/Classifier/ClassifierScreen';
 import { ReportsScreen } from './pages/Reports/ReportsScreen';
-import { CATEGORIES, CATEGORY_COLORS, MOCK_TRANSACTIONS } from './data/mockData';
+import { CATEGORIES, CATEGORY_COLORS } from './data/mockData';
 import './styles/global.css';
 
 export function App() {
   const [activeTab, setActiveTab] = useState('import');
-  const [transactions, setTransactions] = useState(MOCK_TRANSACTIONS);
+  const [transactions, setTransactions] = useState([]);
 
   return (
     <ThemeProvider>
@@ -28,7 +28,13 @@ export function App() {
           aria-labelledby={`tab-${activeTab}`}
           className="flex-1 flex flex-col"
         >
-          {activeTab === 'import' && <ImportScreen />}
+          {activeTab === 'import' && (
+            <ImportScreen
+              transactions={transactions}
+              onTransactionsChange={setTransactions}
+              onGenerateDashboard={() => setActiveTab('reports')}
+            />
+          )}
 
           {activeTab === 'classifier' && (
             <ClassifierScreen

@@ -1,12 +1,5 @@
 import React from 'react';
 
-/**
- * NavigationHeader Component
- * Barra de navegação superior acessível (WCAG 2.1 AA) para alternar entre as abas:
- * - 'import': Leitor de CSV e Importação (Escopo Ana)
- * - 'classifier': Classificador de Regras e Pré-visualização (Escopo João)
- * - 'reports': Relatórios Financeiros e Exportação (Escopo João)
- */
 export function NavigationHeader({ activeTab, onSelectTab, transactionCount = 0 }) {
   const tabs = [
     {
@@ -21,28 +14,22 @@ export function NavigationHeader({ activeTab, onSelectTab, transactionCount = 0 
       icon: '🏷️',
       description: 'Gerenciar regras e testar classificação de categorias',
     },
-    {
-      id: 'reports',
-      label: 'Relatórios Financeiros',
-      icon: '📊',
-      description: 'Resumo consolidado e exportação para PDF e CSV',
-    },
   ];
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950 text-white shadow-md">
+    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white text-black">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
         {/* Brand / Logo */}
         <div className="flex items-center gap-3">
           <div
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white font-bold shadow-sm shadow-blue-500/30"
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-900 text-white font-bold shadow-sm shadow-blue-500/30"
             aria-hidden="true"
           >
             ↗
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
+              <span className="font-display text-base sm:text-lg font-bold tracking-tight text-black">
                 ControleFinanca
               </span>
               <span className="rounded-md bg-blue-950/80 border border-blue-800/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-300">

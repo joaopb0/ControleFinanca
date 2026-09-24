@@ -20,6 +20,8 @@ function formatBRL(val) {
 export function ReportSummaryCards({ totals = {}, isLoading = false }) {
   const income = totals.income || 0;
   const expenses = totals.expenses || 0;
+  const largestExpenseCategory = totals.largestExpenseCategory || 'Outros';
+  const largestExpenseAmount = totals.largestExpenseAmount || totals.largestExpense || 0;
   const netBalance = totals.netBalance !== undefined ? totals.netBalance : income - expenses;
   const count = totals.transactionCount || 0;
 
@@ -50,11 +52,11 @@ export function ReportSummaryCards({ totals = {}, isLoading = false }) {
       aria-label="Resumo dos indicadores financeiros consolidados"
       className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
     >
-      {/* 1. Receitas Totais */}
+      {/* 1. Total de receitas */}
       <article className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-xs transition-shadow hover:shadow-md">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Receitas Totais
+            Total de receitas
           </span>
           <div
             className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs"
@@ -79,11 +81,11 @@ export function ReportSummaryCards({ totals = {}, isLoading = false }) {
         </div>
       </article>
 
-      {/* 2. Despesas Totais */}
+      {/* 2. Total de despesas */}
       <article className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-xs transition-shadow hover:shadow-md">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Despesas Totais
+            Total de despesas
           </span>
           <div
             className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-50 text-red-700 font-bold text-xs"
@@ -108,7 +110,36 @@ export function ReportSummaryCards({ totals = {}, isLoading = false }) {
         </div>
       </article>
 
-      {/* 3. Saldo Líquido */}
+      {/* 3. Maior gasto */}
+      <article className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-xs transition-shadow hover:shadow-md">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Maior gasto
+          </span>
+          <div
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50 text-violet-700 font-bold text-xs"
+            aria-hidden="true"
+          >
+            ★
+          </div>
+        </div>
+
+        <div className="my-3">
+          <div className="font-mono text-xl sm:text-2xl font-bold tracking-tight text-violet-700">
+            {largestExpenseCategory}
+          </div>
+          <div className="mt-1 text-sm font-medium text-slate-600">
+            {formatBRL(largestExpenseAmount)}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-800">
+          <span className="h-1.5 w-1.5 rounded-full bg-violet-700" aria-hidden="true" />
+          <span>Máxima despesa somada</span>
+        </div>
+      </article>
+
+      {/* 4. Sobra */}
       <article
         className={`flex flex-col justify-between rounded-2xl border p-5 shadow-xs transition-shadow hover:shadow-md ${
           isPositiveNet
@@ -118,7 +149,7 @@ export function ReportSummaryCards({ totals = {}, isLoading = false }) {
       >
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
-            Saldo Líquido
+            Sobra
           </span>
           <div
             className={`flex h-7 w-7 items-center justify-center rounded-lg font-bold text-xs ${
@@ -153,34 +184,8 @@ export function ReportSummaryCards({ totals = {}, isLoading = false }) {
                 : 'bg-red-100 text-red-900 font-bold'
             }`}
           >
-            {isPositiveNet ? 'Superávit no período' : 'Déficit no período'}
+            {isPositiveNet ? 'Positivo no período' : 'Negativo no período'}
           </span>
-        </div>
-      </article>
-
-      {/* 4. Total de Lançamentos */}
-      <article className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-xs transition-shadow hover:shadow-md">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Lançamentos
-          </span>
-          <div
-            className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-800 font-bold text-xs"
-            aria-hidden="true"
-          >
-            #
-          </div>
-        </div>
-
-        <div className="my-3">
-          <div className="flex items-baseline gap-1 font-mono text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-            <span>{count}</span>
-            <span className="text-xs font-normal text-slate-500">registros</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
-          <span>Consolidado no período</span>
         </div>
       </article>
     </section>

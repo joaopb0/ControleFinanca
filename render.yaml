@@ -15,7 +15,7 @@ services:
       - key: DATABASE_URL
         sync: false # Cole aqui a URL de conexão do seu banco de dados MySQL
       - key: CLIENT_URL
-        sync: false # Cole a URL pública do seu front-end (ex: https://frontend-client.onrender.com)
+        value: https://frontend-client-f4fn.onrender.com
 
   # -------------------------------------------------------------
   # 2. SERVIÇO FRONT-END (React Vite Static Site)
@@ -33,7 +33,7 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        sync: false # Cole a URL pública da sua API (ex: https://backend-api.onrender.com/api)
+        value: https://backend-api.onrender.com/api
 
   # -------------------------------------------------------------
   # 3. INTERFACE WEB DO BANCO DE DADOS (Adminer Web UI)
