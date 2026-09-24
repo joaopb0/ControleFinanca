@@ -4,6 +4,7 @@ import { CategoryList } from '../../components/import/CategoryList';
 import { CreateCategoryModal } from '../../components/import/CreateCategoryModal';
 import { TransactionsTable } from '../../components/import/TransactionsTable';
 import { UploadPanel } from '../../components/import/UploadPanel';
+import { uploadCsv } from '../../services/api';
 
 export function ImportScreen({
   transactions: externalTransactions = [],
@@ -46,22 +47,10 @@ export function ImportScreen({
       return;
     }
 
-    const formData = new FormData();
-    formData.append('file', arquivo);
-
     setIsUploading(true);
 
     try {
-      const response = await fetch('http://localhost:3000/api/upload-csv', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.erro || data?.error || 'Erro ao processar o CSV');
-      }
+      const data = await uploadCsv(arquivo);
 
       const rows = Array.isArray(data?.dados) ? data.dados : [];
       const normalizedTransactions = rows.map((row, index) => ({

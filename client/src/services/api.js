@@ -5,6 +5,25 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
+export async function uploadCsv(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE_URL}/upload-csv`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const message = data?.error?.message || data?.message || data?.erro;
+    throw new Error(message || `Erro HTTP: ${response.status}`);
+  }
+
+  return data;
+}
+
 /**
  * Função utilitária genérica para requisições fetch com tratamento de erro
  */
@@ -194,5 +213,6 @@ export const api = {
   fetchReportSummary,
   downloadReportCSV,
   downloadReportPDF,
+  uploadCsv,
   downloadBlob,
 };
