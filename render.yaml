@@ -8,12 +8,19 @@ services:
     rootDir: server
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /api/health
     plan: free
     envVars:
+      - fromGroup: controle-financa-mysql
       - key: NODE_ENV
         value: production
-      - key: DATABASE_URL
-        sync: false # Cole aqui a URL de conexão do seu banco de dados MySQL
+      - key: DB_HOST
+        fromService:
+          type: pserv
+          name: mysql-db
+          property: host
+      - key: DB_PORT
+        value: "3306"
       - key: CLIENT_URL
         value: https://frontend-client-f4fn.onrender.com
 
@@ -36,14 +43,19 @@ services:
         value: https://backend-api-ayj9.onrender.com/api
 
   # -------------------------------------------------------------
-  # 3. INTERFACE WEB DO BANCO DE DADOS (Adminer Web UI)
+  # 3. BANCO DE DADOS MYSQL (servico privado com disco persistente)
   # -------------------------------------------------------------
-  - type: web
-    name: database-interface
+  - type: pserv
+    name: mysql-db
     runtime: image
     image:
-      url: adminer:latest
-    plan: free
+      url: mysql:8.4
+    plan: 0.5c-512mb
+    disk:
+      name: mysql-data
+      mountPath: /var/lib/mysql
+      sizeGB: 1
     envVars:
-      - key: ADMINER_DEFAULT_SERVER
-        value: db
+      - fromGroup: controle-financa-mysql
+      - key: MYSQL_ROOT_PASSWORD
+        generateValue: true

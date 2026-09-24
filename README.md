@@ -92,3 +92,13 @@ npm run dev
   - Roteamento modular (`/api/health`, `/api/users`)
   - Middleware global de captura e tratamento de erros
   - Middleware de log de requisições em tempo real
+
+## MySQL na Render
+
+O `render.yaml` cria `mysql-db` como serviço privado com disco persistente em `/var/lib/mysql`, além do backend e do frontend. A Render inicia o contêiner do MySQL quando sincroniza o Blueprint; `npm start` inicia a API e aguarda a conexão com o banco. O serviço privado e o disco são pagos. O backend usa o endereço interno fornecido pelo Blueprint.
+
+1. **Antes de sincronizar o Blueprint**, crie um Environment Group chamado `controle-financa-mysql` no mesmo workspace dos serviços, no Dashboard da Render. Em **Add from .env**, importe o arquivo local `server/.env` e salve o grupo. Assim, o usuário e a senha já existem no primeiro início do MySQL.
+2. Sincronize o Blueprint já vinculado a este repositório na Render, usando a branch `main`. Se ainda não houver um Blueprint, crie um apontando para o `render.yaml`. Se a sincronização automática ocorreu antes da criação do grupo e falhou, execute uma nova sincronização.
+3. Confirme que `mysql-db` e `backend-api` estão ativos e que `/api/health` no backend retorna HTTP 200 com o MySQL conectado. O Blueprint entrega o mesmo grupo aos dois serviços e fornece o endereço interno do banco ao backend.
+
+O arquivo `server/.env` é local e ignorado pelo Git. A senha nele é de teste; antes de armazenar dados reais, altere a senha do usuário no MySQL e atualize o grupo na Render. Mudar apenas o `.env` depois da primeira inicialização não altera a senha no banco. Variáveis definidas diretamente em um serviço da Render prevalecem sobre as do grupo; remova valores antigos de `DB_*` ou `MYSQL_*` que entrem em conflito. As variáveis `MYSQL_*` inicializam usuário e banco somente quando o disco do MySQL está vazio. Se o serviço `database-interface` (Adminer) já existir na sua conta Render, remova-o após a sincronização: tirar sua definição do Blueprint não exclui um serviço remoto existente, e a interface pública permitiria tentativas de acesso com a senha de teste.
