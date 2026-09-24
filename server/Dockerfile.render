@@ -1,0 +1,23 @@
+FROM node:22-bullseye-slim AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
+FROM mysql:8.4
+
+COPY --from=deps /usr/local/bin/node /usr/local/bin/node
+COPY --from=deps /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && node --version && npm --version
+
+WORKDIR /app
+COPY --chown=mysql:mysql package.json package-lock.json ./
+COPY --from=deps --chown=mysql:mysql /app/node_modules ./node_modules
+COPY --chown=mysql:mysql src ./src
+COPY --chown=mysql:mysql start-render.sh ./start-render.sh
+RUN chmod 755 ./start-render.sh && mkdir -p /app/uploads && chown mysql:mysql /app/uploads
+
+ENV HOME=/app
+USER mysql
+EXPOSE 10000
+CMD ["./start-render.sh"]
