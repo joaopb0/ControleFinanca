@@ -14,11 +14,18 @@ export async function uploadCsv(file) {
     body: formData,
   });
 
-  const data = await response.json();
+  const contentType = response.headers.get('content-type') || '';
+  const data = contentType.includes('application/json')
+    ? await response.json()
+    : null;
 
   if (!response.ok) {
     const message = data?.error?.message || data?.message || data?.erro;
-    throw new Error(message || `Erro HTTP: ${response.status}`);
+    throw new Error(message || `A API retornou HTTP ${response.status}. Verifique se o backend está ativo e se a URL está correta.`);
+  }
+
+  if (!data) {
+    throw new Error('A API retornou uma resposta inválida ao processar o extrato.');
   }
 
   return data;

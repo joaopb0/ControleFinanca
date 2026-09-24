@@ -1,13 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
-import multer from 'multer';
 import dotenv from 'dotenv';
 import apiRoutes from './routes/api.routes.js';
 import { requestLogger } from './middlewares/logger.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { initDatabase } from './config/database.js';
-import { csvImportController } from './controllers/csvImport.controller.js';
 
 // Carrega variáveis de ambiente
 dotenv.config();
@@ -20,9 +18,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ].filter(Boolean);
-const uploadDir = 'uploads';
-
-fs.mkdirSync(uploadDir, { recursive: true });
+fs.mkdirSync('uploads', { recursive: true });
 
 // Middlewares essenciais
 app.use(cors({
@@ -37,12 +33,16 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(requestLogger);
-const upload = multer({ dest: 'uploads/' });
-
-app.post('/api/upload-csv', upload.single('file'), csvImportController.uploadCsv);
 
 // Registro de Rotas
 app.use('/api', apiRoutes);
+
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: { message: `Rota da API não encontrada: ${req.method} ${req.originalUrl}` },
+  });
+});
 
 // Rota raiz informativa
 app.get('/', (req, res) => {
