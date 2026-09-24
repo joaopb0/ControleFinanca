@@ -6,8 +6,8 @@ services:
     name: backend-api
     runtime: docker
     rootDir: server
-    dockerfilePath: ./server/Dockerfile.render
-    dockerContext: ./server
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
     healthCheckPath: /api/health
     plan: free
     envVars:
