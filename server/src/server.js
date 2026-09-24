@@ -1,28 +1,25 @@
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
-import multer from 'multer';
 import dotenv from 'dotenv';
 import apiRoutes from './routes/api.routes.js';
 import { requestLogger } from './middlewares/logger.js';
 import { errorHandler } from './middlewares/errorHandler.js';
-import { initDatabase } from './config/database.js';
-import { csvImportController } from './controllers/csvImport.controller.js';
+import { initDatabase, isDatabaseAvailable } from './config/database.js';
 
 // Carrega variáveis de ambiente
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isProduction = process.env.NODE_ENV === 'production';
 const allowedOrigins = [
   process.env.CLIENT_URL,
   'https://frontend-client-f4fn.onrender.com',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ].filter(Boolean);
-const uploadDir = 'uploads';
-
-fs.mkdirSync(uploadDir, { recursive: true });
+fs.mkdirSync('uploads', { recursive: true });
 
 // Middlewares essenciais
 app.use(cors({
@@ -37,12 +34,32 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(requestLogger);
-const upload = multer({ dest: 'uploads/' });
 
-app.post('/api/upload-csv', upload.single('file'), csvImportController.uploadCsv);
+// Em produção, nenhuma rota de dados usa o fallback em memória se o MySQL cair.
+if (isProduction) {
+  app.use('/api', async (req, res, next) => {
+    if (req.path === '/health') return next();
+
+    if (!await isDatabaseAvailable()) {
+      return res.status(503).json({
+        success: false,
+        error: { message: 'Banco de dados indisponível.' },
+      });
+    }
+
+    return next();
+  });
+}
 
 // Registro de Rotas
 app.use('/api', apiRoutes);
+
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: { message: `Rota da API não encontrada: ${req.method} ${req.originalUrl}` },
+  });
+});
 
 // Rota raiz informativa
 app.get('/', (req, res) => {
@@ -59,12 +76,24 @@ app.get('/', (req, res) => {
 // Middleware Global de Tratamento de Erros
 app.use(errorHandler);
 
-// Inicia o servidor e conecta ao MySQL
-app.listen(PORT, async () => {
-  console.log(`🚀 Servidor Back-end rodando na porta ${PORT}`);
-  console.log(`🔗 API disponível em: http://localhost:${PORT}/api`);
-  console.log(`🩺 Health Check: http://localhost:${PORT}/api/health`);
-  
-  // Inicializa a conexão com o MySQL
+function listen() {
+  app.listen(PORT, () => {
+    console.log(`🚀 Servidor Back-end rodando na porta ${PORT}`);
+    console.log(`🔗 API disponível em: http://localhost:${PORT}/api`);
+    console.log(`🩺 Health Check: http://localhost:${PORT}/api/health`);
+  });
+}
+
+if (isProduction) {
+  // O MySQL é provisionado em outro serviço da Render e pode demorar a iniciar.
+  const connected = await initDatabase({ maxAttempts: 90, retryDelayMs: 2000 });
+  if (connected) {
+    listen();
+  } else {
+    console.error('Não foi possível iniciar a API: MySQL indisponível.');
+    process.exitCode = 1;
+  }
+} else {
+  listen();
   await initDatabase();
-});
+}
