@@ -33,7 +33,7 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://backend-api.onrender.com/api
+        value: https://backend-api-ayj9.onrender.com/
 
   # -------------------------------------------------------------
   # 3. INTERFACE WEB DO BANCO DE DADOS (Adminer Web UI)
