@@ -50,8 +50,14 @@ function parseCsvLine(line, delimiter) {
   return cells;
 }
 
-function normalizeCsvRowFromText(rawLine, delimiter) {
-  const cells = parseCsvLine(rawLine, delimiter).filter((cell) => cell !== '');
+function normalizeCsvRowFromText(rawLine, delimiter, headers = []) {
+  const parsedCells = parseCsvLine(rawLine, delimiter);
+
+  if (headers.length > 0 && parsedCells.length === headers.length) {
+    return Object.fromEntries(headers.map((header, index) => [header, parsedCells[index]]));
+  }
+
+  const cells = parsedCells.filter((cell) => cell !== '');
   if (cells.length < 3) return null;
 
   let date = cells[0];
@@ -96,17 +102,14 @@ export const csvImportService = {
     }
 
     const separator = detectCsvSeparator(filePath);
+    const headers = parseCsvLine(lines[0], separator).map((header) => header.trim());
 
     for (let index = 1; index < lines.length; index += 1) {
       const rawLine = lines[index];
-      const row = normalizeCsvRowFromText(rawLine, separator);
+      const row = normalizeCsvRowFromText(rawLine, separator, headers);
       if (!row) continue;
 
-      const normalized = CsvImportModel.normalizeCsvRow({
-        date: row.date,
-        title: row.title,
-        amount: row.amount,
-      });
+      const normalized = CsvImportModel.normalizeCsvRow(row);
 
       if (!normalized) continue;
 

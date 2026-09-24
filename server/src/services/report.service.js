@@ -112,6 +112,8 @@ export function generateSummary(transactions = [], options = {}) {
   // 3. Agregação dos totais
   let totalIncome = 0;
   let totalExpenses = 0;
+  let largestExpenseCategory = null;
+  let largestExpenseAmount = 0;
   const categoryMap = new Map();
 
   for (const tx of filtered) {
@@ -123,7 +125,13 @@ export function generateSummary(transactions = [], options = {}) {
     if (rawVal > 0) {
       totalIncome = round2(totalIncome + rawVal);
     } else if (rawVal < 0) {
-      totalExpenses = round2(totalExpenses + Math.abs(rawVal));
+      const expenseValue = Math.abs(rawVal);
+      totalExpenses = round2(totalExpenses + expenseValue);
+
+      if (expenseValue > largestExpenseAmount) {
+        largestExpenseAmount = round2(expenseValue);
+        largestExpenseCategory = category;
+      }
     }
 
     if (!categoryMap.has(category)) {
@@ -187,7 +195,15 @@ export function generateSummary(transactions = [], options = {}) {
     totals: {
       income: totalIncome,
       expenses: totalExpenses,
+      revenue: totalIncome,
+      totalRevenue: totalIncome,
+      totalExpenses: totalExpenses,
+      largestExpenseCategory,
+      largestExpenseAmount,
+      largestExpense: largestExpenseAmount,
       netBalance,
+      sobra: netBalance,
+      surplus: netBalance,
       transactionCount: filtered.length,
     },
     categoryBreakdown,

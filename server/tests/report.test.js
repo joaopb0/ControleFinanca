@@ -99,6 +99,8 @@ describe('Financial Report & Export Suite', () => {
       assert.equal(summary.totals.income, 6200.0);
       assert.equal(summary.totals.expenses, 2380.0);
       assert.equal(summary.totals.netBalance, 3820.0);
+      assert.equal(summary.totals.largestExpenseCategory, 'Moradia');
+      assert.equal(summary.totals.largestExpenseAmount, 1500.0);
       assert.equal(summary.totals.transactionCount, 6);
     });
 

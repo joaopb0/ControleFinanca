@@ -28,7 +28,13 @@ export function App() {
           aria-labelledby={`tab-${activeTab}`}
           className="flex-1 flex flex-col"
         >
-          {activeTab === 'import' && <ImportScreen />}
+          {activeTab === 'import' && (
+            <ImportScreen
+              transactions={transactions}
+              onTransactionsChange={setTransactions}
+              onGenerateDashboard={() => setActiveTab('reports')}
+            />
+          )}
 
           {activeTab === 'classifier' && (
             <ClassifierScreen

@@ -41,11 +41,11 @@ function parseAmount(value) {
   const raw = String(value).trim();
   if (!raw) return 0;
 
-  const normalized = raw.replace(/\s+/g, '');
+  const normalized = raw.replace(/\s+/g, '').replace(/[^0-9,.-]/g, '');
   const lastComma = normalized.lastIndexOf(',');
   const lastDot = normalized.lastIndexOf('.');
 
-  let sanitized = normalized.replace(/[^0-9,.-]/g, '');
+  let sanitized = normalized;
 
   if (lastComma !== -1 && lastDot !== -1) {
     const lastSeparator = Math.max(lastComma, lastDot);
@@ -63,6 +63,14 @@ function parseAmount(value) {
 
   const numeric = Number(sanitized);
   return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function normalizeTransactionType(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 export const CsvImportModel = {
@@ -92,11 +100,18 @@ export const CsvImportModel = {
       normalizedKeys.valortransacao ??
       normalizedKeys.valorbruto ??
       0;
+    const type = normalizeTransactionType(normalizedKeys.type ?? normalizedKeys.tipo);
+    const parsedAmount = parseAmount(amount);
+    const value = type === 'debito'
+      ? -Math.abs(parsedAmount)
+      : type === 'credito'
+        ? Math.abs(parsedAmount)
+        : parsedAmount;
 
     return {
       date: normalizeDate(date),
       description: String(title ?? '').trim(),
-      value: parseAmount(amount),
+      value,
       category: 'Outros',
     };
   },

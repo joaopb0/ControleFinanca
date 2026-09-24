@@ -64,3 +64,31 @@ test('csvImportService deve ler CSV padrão com separador , e colunas date,title
     fs.unlinkSync(filePath);
   }
 });
+
+test('csvImportService deve mapear o extrato Sicredi e ignorar colunas técnicas e saldo', async () => {
+  const filePath = path.join(os.tmpdir(), `sicredi-${Date.now()}.csv`);
+  fs.writeFileSync(
+    filePath,
+    [
+      'Data;Descricao;CodTransacao;Identificador;Tipo;Valor;Saldo',
+      '23/09/2026;PAGAMENTO PIX - TICKET AND GO;664;id-1;DEBITO;- R$ 51,75;R$ 1.592,34',
+      '16/09/2026;RECEBIMENTO PIX - GUILHERME;668;id-2;CREDITO;+ R$ 12,50;R$ 2.514,46',
+    ].join('\n'),
+    'utf8',
+  );
+
+  try {
+    const result = await csvImportService.parseCsvFile(filePath);
+
+    assert.equal(result.length, 2);
+    assert.equal(result[0].date, '2026-09-23');
+    assert.equal(result[0].description, 'PAGAMENTO PIX - TICKET AND GO');
+    assert.equal(result[0].value, -51.75);
+    assert.equal(result[1].value, 12.5);
+    assert.equal(result[1].description, 'RECEBIMENTO PIX - GUILHERME');
+    assert.equal(result[0].CodTransacao, undefined);
+    assert.equal(result[0].saldo, undefined);
+  } finally {
+    fs.unlinkSync(filePath);
+  }
+});
