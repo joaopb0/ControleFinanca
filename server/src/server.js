@@ -14,14 +14,25 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'https://frontend-client-f4fn.onrender.com',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+].filter(Boolean);
 const uploadDir = 'uploads';
 
 fs.mkdirSync(uploadDir, { recursive: true });
 
 // Middlewares essenciais
 app.use(cors({
-  origin: [CLIENT_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Origem não autorizada pelo CORS.'));
+  },
   credentials: true,
 }));
 app.use(express.json());
