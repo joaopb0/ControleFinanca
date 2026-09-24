@@ -85,7 +85,7 @@ function listen() {
 }
 
 if (isProduction) {
-  // O MySQL é provisionado em outro serviço da Render e pode demorar a iniciar.
+  // O MySQL inicia no mesmo contêiner e pode demorar a inicializar no plano gratuito.
   const connected = await initDatabase({ maxAttempts: 90, retryDelayMs: 2000 });
   if (connected) {
     listen();

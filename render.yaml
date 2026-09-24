@@ -1,26 +1,29 @@
 services:
   # -------------------------------------------------------------
-  # 1. SERVIÇO BACK-END (Node.js Express + MySQL)
+  # 1. SERVIÇO BACK-END (Node.js Express + MySQL efêmero)
   # -------------------------------------------------------------
   - type: web
     name: backend-api
-    runtime: node
+    runtime: docker
     rootDir: server
-    buildCommand: npm install
-    startCommand: npm start
+    dockerfilePath: ./server/Dockerfile.render
+    dockerContext: ./server
     healthCheckPath: /api/health
     plan: free
     envVars:
       - fromGroup: controle-financa-mysql
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: "10000"
       - key: DB_HOST
-        fromService:
-          type: pserv
-          name: mysql-db
-          property: host
+        value: 127.0.0.1
       - key: DB_PORT
         value: "3306"
+      - key: MYSQL_ROOT_HOST
+        value: localhost
+      - key: MYSQL_ROOT_PASSWORD
+        generateValue: true
       - key: CLIENT_URL
         value: https://frontend-client-f4fn.onrender.com
 
@@ -41,21 +44,3 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://backend-api-ayj9.onrender.com/api
-
-  # -------------------------------------------------------------
-  # 3. BANCO DE DADOS MYSQL (servico privado com disco persistente)
-  # -------------------------------------------------------------
-  - type: pserv
-    name: mysql-db
-    runtime: image
-    image:
-      url: mysql:8.4
-    plan: 0.5c-512mb
-    disk:
-      name: mysql-data
-      mountPath: /var/lib/mysql
-      sizeGB: 1
-    envVars:
-      - fromGroup: controle-financa-mysql
-      - key: MYSQL_ROOT_PASSWORD
-        generateValue: true
