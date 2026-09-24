@@ -1,10 +1,13 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import multer from 'multer';
 import dotenv from 'dotenv';
 import apiRoutes from './routes/api.routes.js';
 import { requestLogger } from './middlewares/logger.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { initDatabase } from './config/database.js';
+import { csvImportController } from './controllers/csvImport.controller.js';
 
 // Carrega variáveis de ambiente
 dotenv.config();
@@ -12,6 +15,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+const uploadDir = 'uploads';
+
+fs.mkdirSync(uploadDir, { recursive: true });
 
 // Middlewares essenciais
 app.use(cors({
@@ -20,6 +26,9 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(requestLogger);
+const upload = multer({ dest: 'uploads/' });
+
+app.post('/api/upload-csv', upload.single('file'), csvImportController.uploadCsv);
 
 // Registro de Rotas
 app.use('/api', apiRoutes);

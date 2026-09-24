@@ -1,13 +1,18 @@
-import { useCallback, useRef, useState } from 'react';
-import { CATEGORIES, CATEGORY_COLORS, MOCK_TRANSACTIONS } from '../../data/mockData';
+import { useEffect, useRef, useState } from 'react';
+import { CATEGORIES, CATEGORY_COLORS } from '../../data/mockData';
 import { CategoryList } from '../../components/import/CategoryList';
 import { CreateCategoryModal } from '../../components/import/CreateCategoryModal';
-import { ImportHeader } from '../../components/import/ImportHeader';
 import { TransactionsTable } from '../../components/import/TransactionsTable';
 import { UploadPanel } from '../../components/import/UploadPanel';
 
-export function ImportScreen() {
-  const [transactions, setTransactions] = useState([]);
+export function ImportScreen({
+  transactions: externalTransactions = [],
+  onTransactionsChange,
+  onGenerateDashboard,
+}) {
+  const [transactions, setTransactions] = useState(externalTransactions);
+  const [arquivo, setArquivo] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [openId, setOpenId] = useState(null);
   const [customCategories, setCustomCategories] = useState([]);
@@ -26,20 +31,80 @@ export function ImportScreen() {
   };
   const fileLoaded = transactions.length > 0;
 
-  const loadMockData = useCallback(() => {
-    setTransactions(MOCK_TRANSACTIONS);
-  }, []);
+  useEffect(() => {
+    setTransactions(externalTransactions);
+  }, [externalTransactions]);
+
+  const handleFileChange = (event) => {
+    const selectedFile = event.target.files?.[0] ?? null;
+    setArquivo(selectedFile);
+  };
+
+  const handleUpload = async () => {
+    if (!arquivo) {
+      alert('Selecione um arquivo CSV primeiro!');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', arquivo);
+
+    setIsUploading(true);
+
+    try {
+      const response = await fetch('http://localhost:3000/api/upload-csv', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.erro || data?.error || 'Erro ao processar o CSV');
+      }
+
+      const rows = Array.isArray(data?.dados) ? data.dados : [];
+      const normalizedTransactions = rows.map((row, index) => ({
+        id: row.id ?? `csv-${Date.now()}-${index}`,
+        date: row.date ?? row.Data ?? row.data ?? '',
+        description: row.description ?? row.Descricao ?? row.descricao ?? row['Descrição'] ?? '',
+        value: Number(row.value ?? row.Valor ?? row.valor ?? 0),
+        category: row.category ?? 'Outros',
+      }));
+
+      const nextTransactions = normalizedTransactions;
+      setTransactions(nextTransactions);
+      if (onTransactionsChange) {
+        onTransactionsChange(nextTransactions);
+      }
+      setOpenId(null);
+    } catch (error) {
+      console.error('Erro ao enviar o arquivo:', error);
+      alert(error.message || 'Erro ao processar o CSV');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleDrop = (event) => {
     event.preventDefault();
     setIsDragOver(false);
-    loadMockData();
+
+    const droppedFile = event.dataTransfer?.files?.[0] ?? null;
+    if (!droppedFile) return;
+
+    setArquivo(droppedFile);
   };
 
   const updateCategory = (id, category) => {
-    setTransactions((current) =>
-      current.map((item) => (item.id === id ? { ...item, category } : item)),
+    const nextTransactions = transactions.map((item) =>
+      item.id === id ? { ...item, category } : item,
     );
+
+    setTransactions(nextTransactions);
+    if (onTransactionsChange) {
+      onTransactionsChange(nextTransactions);
+    }
     setOpenId(null);
   };
 
@@ -48,10 +113,23 @@ export function ImportScreen() {
     setModalOpen(false);
   };
 
+  const handleGenerateDashboard = () => {
+    if (!transactions.length) {
+      alert('Importe ao menos uma transação antes de gerar o dashboard.');
+      return;
+    }
+
+    if (onTransactionsChange) {
+      onTransactionsChange(transactions);
+    }
+
+    if (onGenerateDashboard) {
+      onGenerateDashboard();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <ImportHeader />
-
       <div className="flex min-h-[calc(100vh-65px)] flex-col lg:flex-row">
         <aside className="w-full shrink-0 border-b border-slate-200 bg-white lg:w-80 lg:border-b-0 lg:border-r">
           <div className="flex flex-col gap-6 p-5 sm:p-6">
@@ -64,7 +142,10 @@ export function ImportScreen() {
               }}
               onDragLeave={() => setIsDragOver(false)}
               onDrop={handleDrop}
-              onFileChange={loadMockData}
+              onFileChange={handleFileChange}
+              onUpload={handleUpload}
+              isUploading={isUploading}
+              selectedFileName={arquivo?.name ?? ''}
             />
 
             <div className="rounded-2xl bg-blue-900 p-4 text-white">
@@ -131,7 +212,11 @@ export function ImportScreen() {
               </div>
 
               <footer className="fixed bottom-0 right-0 z-10 flex w-full items-center justify-end gap-4 border-t border-slate-200 bg-white px-5 py-4 sm:px-8 lg:left-80 lg:w-auto">
-                <button className="rounded-xl bg-blue-900 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-900/20 hover:bg-blue-800">
+                <button
+                  type="button"
+                  onClick={handleGenerateDashboard}
+                  className="rounded-xl bg-blue-900 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-900/20 hover:bg-blue-800"
+                >
                   Gerar dashboard ↗
                 </button>
               </footer>
