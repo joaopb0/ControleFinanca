@@ -23,7 +23,7 @@ export const classificationRuleController = {
       const activeOnly = req.query.active === 'true';
       const category = req.query.category || null;
 
-      const rules = await ClassificationRuleModel.findAll({ activeOnly, category });
+      const rules = await ClassificationRuleModel.findAll(req.user.id, { activeOnly, category });
       return res.status(200).json({
         success: true,
         count: rules.length,
@@ -41,7 +41,7 @@ export const classificationRuleController = {
   getById: async (req, res, next) => {
     try {
       const { id } = req.params;
-      const rule = await ClassificationRuleModel.findById(id);
+      const rule = await ClassificationRuleModel.findById(req.user.id, id);
 
       if (!rule) {
         return res.status(404).json({
@@ -85,7 +85,7 @@ export const classificationRuleController = {
       const numPriority = priority !== undefined ? Number(priority) : 0;
       const boolActive = active !== undefined ? Boolean(active) : true;
 
-      const newRule = await ClassificationRuleModel.create({
+      const newRule = await ClassificationRuleModel.create(req.user.id, {
         name: cleanName,
         category: cleanCategory,
         keywords: cleanKeywords,
@@ -110,7 +110,7 @@ export const classificationRuleController = {
   update: async (req, res, next) => {
     try {
       const { id } = req.params;
-      const existing = await ClassificationRuleModel.findById(id);
+      const existing = await ClassificationRuleModel.findById(req.user.id, id);
 
       if (!existing) {
         return res.status(404).json({
@@ -166,7 +166,7 @@ export const classificationRuleController = {
         updates.active = Boolean(active);
       }
 
-      const updatedRule = await ClassificationRuleModel.update(id, updates);
+      const updatedRule = await ClassificationRuleModel.update(req.user.id, id, updates);
 
       return res.status(200).json({
         success: true,
@@ -185,7 +185,7 @@ export const classificationRuleController = {
   delete: async (req, res, next) => {
     try {
       const { id } = req.params;
-      const deleted = await ClassificationRuleModel.delete(id);
+      const deleted = await ClassificationRuleModel.delete(req.user.id, id);
 
       if (!deleted) {
         return res.status(404).json({
@@ -212,7 +212,7 @@ export const classificationRuleController = {
    */
   resetDefaults: async (req, res, next) => {
     try {
-      const resetRules = await ClassificationRuleModel.resetToDefaults();
+      const resetRules = await ClassificationRuleModel.resetToDefaults(req.user.id);
       return res.status(200).json({
         success: true,
         message: 'Regras de classificação restauradas para o padrão inicial.',

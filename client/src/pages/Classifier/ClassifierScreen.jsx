@@ -5,18 +5,6 @@ import { RuleModal } from '../../components/classifier/RuleModal';
 import { ClassificationTester } from '../../components/classifier/ClassificationTester';
 import { ClassifiedPreviewTable } from '../../components/classifier/ClassifiedPreviewTable';
 
-// Regras base padrão caso a API esteja temporariamente offline
-const DEFAULT_FALLBACK_RULES = [
-  { id: 'rule-1', name: 'Alimentação & Supermercado', category: 'Alimentação', keywords: ['supermercado', 'mercado', 'restaurante', 'ifood', 'padaria', 'lanche'], priority: 10, active: true },
-  { id: 'rule-2', name: 'Moradia & Aluguel', category: 'Moradia', keywords: ['aluguel', 'condominio', 'imobiliaria', 'iptu', 'reforma'], priority: 9, active: true },
-  { id: 'rule-3', name: 'Transporte & Aplicativos', category: 'Transporte', keywords: ['uber', '99app', 'posto', 'gasolina', 'combustivel', 'estacionamento', 'metro'], priority: 8, active: true },
-  { id: 'rule-4', name: 'Lazer & Entretenimento', category: 'Lazer', keywords: ['netflix', 'spotify', 'cinema', 'ingresso', 'jogos', 'steam', 'bar'], priority: 7, active: true },
-  { id: 'rule-5', name: 'Contas & Serviços Públicos', category: 'Contas', keywords: ['luz', 'energia', 'agua', 'sabesp', 'enel', 'internet', 'claro', 'vivo', 'tim'], priority: 6, active: true },
-  { id: 'rule-6', name: 'Saúde & Farmácia', category: 'Saúde', keywords: ['farmacia', 'drogaria', 'hospital', 'consulta', 'laboratorio', 'medico', 'dentista'], priority: 5, active: true },
-  { id: 'rule-7', name: 'Receitas & Rendimentos', category: 'Receita', keywords: ['salario', 'ted recebida', 'pix recebido', 'rendimento', 'pro-labore', 'dividendos'], priority: 10, active: true },
-  { id: 'rule-8', name: 'Educação & Cursos', category: 'Outros', keywords: ['faculdade', 'escola', 'curso', 'livraria', 'udemy'], priority: 4, active: true },
-];
-
 /**
  * ClassifierScreen Component
  * Tela principal do Classificador de Categorias de Pagamento (Escopo João).
@@ -51,16 +39,15 @@ export function ClassifierScreen({
     fetchRules()
       .then((response) => {
         if (!isMounted) return;
-        if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
+        if (Array.isArray(response?.data)) {
           setRules(response.data);
         } else {
-          setRules(DEFAULT_FALLBACK_RULES);
+          throw new Error('A API retornou regras em formato inválido.');
         }
       })
       .catch((err) => {
         if (!isMounted) return;
-        console.warn('API de regras inacessível, utilizando conjunto padrão local:', err.message);
-        setRules(DEFAULT_FALLBACK_RULES);
+        setNotification({ message: err.message || 'Não foi possível carregar suas regras.', type: 'error' });
       })
       .finally(() => {
         if (isMounted) setIsLoading(false);
@@ -88,35 +75,22 @@ export function ClassifierScreen({
     setIsSaving(true);
     try {
       if (ruleData.id) {
-        // Atualização
-        try {
-          await updateRule(ruleData.id, ruleData);
-        } catch {
-          // Contingência se offline
-        }
+        const response = await updateRule(ruleData.id, ruleData);
+        if (!response?.data) throw new Error('A API não confirmou a atualização da regra.');
         setRules((prev) =>
-          prev.map((r) => (r.id === ruleData.id ? { ...r, ...ruleData } : r)),
+          prev.map((r) => (r.id === ruleData.id ? response.data : r)),
         );
         showNotification('Regra atualizada com sucesso!');
       } else {
-        // Criação
-        let newRule = null;
-        try {
-          const res = await createRule(ruleData);
-          newRule = res?.data;
-        } catch {
-          // Contingência se offline
-        }
-        if (!newRule) {
-          newRule = {
-            ...ruleData,
-            id: `rule-local-${Date.now()}`,
-          };
-        }
-        setRules((prev) => [newRule, ...prev]);
+        const response = await createRule(ruleData);
+        if (!response?.data) throw new Error('A API não confirmou a criação da regra.');
+        setRules((prev) => [response.data, ...prev]);
         showNotification('Regra criada com sucesso!');
       }
       setModalOpen(false);
+    } catch (error) {
+      showNotification(error.message || 'Não foi possível salvar a regra.', 'error');
+      throw error;
     } finally {
       setIsSaving(false);
     }
@@ -125,11 +99,7 @@ export function ClassifierScreen({
   // Excluir regra
   const handleDeleteRule = async (id) => {
     try {
-      try {
-        await deleteRule(id);
-      } catch {
-        // Contingência se offline
-      }
+      await deleteRule(id);
       setRules((prev) => prev.filter((r) => r.id !== id));
       showNotification('Regra excluída com sucesso.');
     } catch (err) {
@@ -141,17 +111,9 @@ export function ClassifierScreen({
   const handleResetRules = async () => {
     setIsLoading(true);
     try {
-      try {
-        const res = await resetRules();
-        if (res?.data) {
-          setRules(res.data);
-          showNotification('Regras restauradas para os valores padrão!');
-          return;
-        }
-      } catch {
-        // Fallback local
-      }
-      setRules(DEFAULT_FALLBACK_RULES);
+      const response = await resetRules();
+      if (!Array.isArray(response?.data)) throw new Error('A API não confirmou a restauração das regras.');
+      setRules(response.data);
       showNotification('Regras restauradas para os valores padrão!');
     } catch (err) {
       showNotification(err.message || 'Erro ao restaurar regras.', 'error');
@@ -214,7 +176,6 @@ export function ClassifierScreen({
         <div className="flex flex-col gap-6">
           {/* Seção 1: Simulador de Correspondência em Tempo Real */}
           <ClassificationTester
-            rules={rules}
             categoryColors={categoryColors}
           />
 
@@ -232,7 +193,6 @@ export function ClassifierScreen({
           {/* Seção 3: Pré-visualização e Revisão de Transações em Lote */}
           <ClassifiedPreviewTable
             transactions={transactions}
-            rules={rules}
             categoryColors={categoryColors}
             onApplyClassified={onApplyClassifiedTransactions}
           />

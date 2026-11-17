@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { randomBytes } from 'node:crypto';
 
 const serverRoot = fileURLToPath(new URL('../', import.meta.url));
 
@@ -48,8 +49,8 @@ test('em produção, DB_* prevalece sobre DATABASE_URL e indisponibilidade retor
     process.env.NODE_ENV = 'development';
     const localResponse = createResponse();
     await healthController.check({}, localResponse);
-    assert.equal(localResponse.statusCode, 200);
-    assert.match(localResponse.body.database, /Modo Contingência/);
+    assert.equal(localResponse.statusCode, 503);
+    assert.match(localResponse.body.database, /indisponível/);
   } finally {
     await dbPool.end();
   }
@@ -61,6 +62,9 @@ test('em produção, configuração ausente impede a API de abrir a porta', () =
     env: {
       ...process.env,
       NODE_ENV: 'production',
+      JWT_SECRET: randomBytes(48).toString('hex'),
+      CLIENT_URL: 'https://frontend.example.test',
+      COOKIE_SAME_SITE: 'none',
       DB_HOST: '',
       DB_USER: 'test',
       DB_PASSWORD: 'temporary',

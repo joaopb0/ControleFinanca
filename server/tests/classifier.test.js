@@ -1,17 +1,14 @@
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeText,
   classifyItem,
   classifyBatch,
 } from '../src/services/classifier.service.js';
-import { ClassificationRuleModel } from '../src/models/classificationRule.model.js';
+import { ClassificationRuleModel, BASELINE_RULES } from '../src/models/classificationRule.model.js';
 import { classifierController } from '../src/controllers/classifier.controller.js';
 
 describe('Classifier Engine & Normalization Suite', () => {
-  beforeEach(async () => {
-    await ClassificationRuleModel.resetToDefaults();
-  });
 
   describe('normalizeText', () => {
     it('deve remover diacríticos e acentos corretamente (NFD)', () => {
@@ -37,7 +34,7 @@ describe('Classifier Engine & Normalization Suite', () => {
 
   describe('classifyItem', () => {
     it('deve classificar uma descrição contendo palavra-chave da regra', async () => {
-      const rules = await ClassificationRuleModel.findAll({ activeOnly: true });
+      const rules = BASELINE_RULES;
       const result = classifyItem('Supermercado Pão de Açúcar', rules);
 
       assert.equal(result.category, 'Alimentação');
@@ -95,7 +92,7 @@ describe('Classifier Engine & Normalization Suite', () => {
     });
 
     it('deve atribuir o fallback "Outros" quando nenhuma regra corresponder', async () => {
-      const rules = await ClassificationRuleModel.findAll({ activeOnly: true });
+      const rules = BASELINE_RULES;
       const result = classifyItem('Pagamento misterioso 987654 xyz', rules);
 
       assert.equal(result.category, 'Outros');
@@ -104,7 +101,7 @@ describe('Classifier Engine & Normalization Suite', () => {
     });
 
     it('deve atribuir o fallback "Outros" para descrição vazia ou nula', async () => {
-      const rules = await ClassificationRuleModel.findAll({ activeOnly: true });
+      const rules = BASELINE_RULES;
 
       assert.equal(classifyItem('', rules).category, 'Outros');
       assert.equal(classifyItem('   ', rules).category, 'Outros');
@@ -121,7 +118,7 @@ describe('Classifier Engine & Normalization Suite', () => {
         { id: 'tx-3', date: '10/09/2026', description: 'Compra Loja Inexistente', value: -80.0 },
       ];
 
-      const result = await classifyBatch(transactions);
+      const result = await classifyBatch(transactions, BASELINE_RULES);
 
       assert.equal(result.summary.total, 3);
       assert.equal(result.summary.classified, 2);
@@ -140,7 +137,7 @@ describe('Classifier Engine & Normalization Suite', () => {
 
     it('deve aceitar array de strings de descrições', async () => {
       const descriptions = ['Salário mensal', 'Farmácia Raia', 'Algo desconhecido'];
-      const result = await classifyBatch(descriptions);
+      const result = await classifyBatch(descriptions, BASELINE_RULES);
 
       assert.equal(result.summary.total, 3);
       assert.equal(result.summary.classified, 2);
@@ -152,7 +149,7 @@ describe('Classifier Engine & Normalization Suite', () => {
     });
 
     it('deve lidar com lote vazio sem erros', async () => {
-      const result = await classifyBatch([]);
+      const result = await classifyBatch([], BASELINE_RULES);
       assert.equal(result.summary.total, 0);
       assert.equal(result.summary.classified, 0);
       assert.equal(result.summary.fallbackCount, 0);
@@ -171,7 +168,7 @@ describe('Classifier Engine & Normalization Suite', () => {
         { id: '8', date: '09/09/2026', description: 'Cinema Shopping Lazer', value: -64.0 },
       ];
 
-      const result = await classifyBatch(mockTransactions);
+      const result = await classifyBatch(mockTransactions, BASELINE_RULES);
 
       assert.equal(result.summary.total, 8);
       assert.equal(result.summary.classified, 8);
@@ -193,7 +190,7 @@ describe('Classifier Engine & Normalization Suite', () => {
 
   describe('Regressão de Colisão de Palavras-Chave (Finding 3: Bare 99 Refinement)', () => {
     it('não deve classificar "Boleto Condomínio 9923" como Transporte', async () => {
-      const rules = await ClassificationRuleModel.findAll({ activeOnly: true });
+      const rules = BASELINE_RULES;
       const result = classifyItem('Boleto Condomínio 9923', rules);
 
       assert.notEqual(result.category, 'Transporte');
@@ -203,7 +200,7 @@ describe('Classifier Engine & Normalization Suite', () => {
     });
 
     it('não deve interceptar outras transações com dígitos 99 como Transporte', async () => {
-      const rules = await ClassificationRuleModel.findAll({ activeOnly: true });
+      const rules = BASELINE_RULES;
 
       const testCases = [
         { desc: 'Supermercado R$ 199.90', expectedNot: 'Transporte', expected: 'Alimentação' },
@@ -223,7 +220,7 @@ describe('Classifier Engine & Normalization Suite', () => {
     });
 
     it('deve classificar corretamente os 14 descritivos brasileiros de mobilidade da 99 como Transporte', async () => {
-      const rules = await ClassificationRuleModel.findAll({ activeOnly: true });
+      const rules = BASELINE_RULES;
 
       const mobility99Cases = [
         '99app *corrida',
@@ -250,7 +247,7 @@ describe('Classifier Engine & Normalization Suite', () => {
     });
   });
 
-  describe('classifierController Integration', () => {
+  describe('classifierController Unit', () => {
     function createMockRes() {
       const res = {
         statusCode: 200,
@@ -268,17 +265,22 @@ describe('Classifier Engine & Normalization Suite', () => {
     }
 
     it('classify deve rejeitar requisição sem transactions nem descriptions com 400', async () => {
-      const req = { body: {} };
+      const req = { user: { id: 'authenticated-user' }, body: {} };
       const res = createMockRes();
-      await classifierController.classify(req, res, () => {});
+      await classifierController.classify(req, res, (error) => { throw error; });
 
       assert.equal(res.statusCode, 400);
       assert.equal(res.body.success, false);
       assert.ok(res.body.error.message.includes('transactions'));
     });
 
-    it('classify deve processar transactions com sucesso retornando status 200 e summary', async () => {
-      const req = {
+    it('classify usa a identidade autenticada para buscar regras e preserva o resumo', async (t) => {
+      t.after(() => mock.restoreAll());
+      mock.method(ClassificationRuleModel, 'findAll', async (userId) => {
+        assert.equal(userId, 'authenticated-user');
+        return BASELINE_RULES;
+      });
+      const req = { user: { id: 'authenticated-user' },
         body: {
           transactions: [
             { id: '1', date: '02/09/2026', description: 'Supermercado Extra', value: -200.0 },
@@ -286,7 +288,7 @@ describe('Classifier Engine & Normalization Suite', () => {
         },
       };
       const res = createMockRes();
-      await classifierController.classify(req, res, () => {});
+      await classifierController.classify(req, res, (error) => { throw error; });
 
       assert.equal(res.statusCode, 200);
       assert.equal(res.body.success, true);
@@ -298,19 +300,24 @@ describe('Classifier Engine & Normalization Suite', () => {
 
     it('classify deve rejeitar lote maior que 5000 itens com status 400', async () => {
       const tooMany = new Array(5001).fill('teste');
-      const req = { body: { descriptions: tooMany } };
+      const req = { user: { id: 'authenticated-user' }, body: { descriptions: tooMany } };
       const res = createMockRes();
-      await classifierController.classify(req, res, () => {});
+      await classifierController.classify(req, res, (error) => { throw error; });
 
       assert.equal(res.statusCode, 400);
       assert.equal(res.body.success, false);
       assert.ok(res.body.error.message.includes('5000'));
     });
 
-    it('testMatch deve retornar categoria para uma única descrição', async () => {
-      const req = { body: { description: 'Uber viagem centro' } };
+    it('testMatch consulta somente as regras da identidade autenticada', async (t) => {
+      t.after(() => mock.restoreAll());
+      mock.method(ClassificationRuleModel, 'findAll', async (userId) => {
+        assert.equal(userId, 'authenticated-user');
+        return BASELINE_RULES;
+      });
+      const req = { user: { id: 'authenticated-user' }, body: { description: 'Uber viagem centro' } };
       const res = createMockRes();
-      await classifierController.testMatch(req, res, () => {});
+      await classifierController.testMatch(req, res, (error) => { throw error; });
 
       assert.equal(res.statusCode, 200);
       assert.equal(res.body.success, true);
@@ -320,9 +327,9 @@ describe('Classifier Engine & Normalization Suite', () => {
     });
 
     it('testMatch deve retornar 400 quando description for omitida', async () => {
-      const req = { body: {} };
+      const req = { user: { id: 'authenticated-user' }, body: {} };
       const res = createMockRes();
-      await classifierController.testMatch(req, res, () => {});
+      await classifierController.testMatch(req, res, (error) => { throw error; });
 
       assert.equal(res.statusCode, 400);
       assert.equal(res.body.success, false);

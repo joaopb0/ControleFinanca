@@ -6,14 +6,13 @@ import { isDatabaseAvailable } from '../config/database.js';
 export const healthController = {
   check: async (req, res) => {
     const connected = await isDatabaseAvailable();
-    const productionUnavailable = process.env.NODE_ENV === 'production' && !connected;
 
-    res.status(productionUnavailable ? 503 : 200).json({
-      status: productionUnavailable ? 'error' : 'success',
-      message: productionUnavailable ? 'Banco de dados indisponível.' : 'API está online e operacional 🚀',
+    res.status(connected ? 200 : 503).json({
+      status: connected ? 'success' : 'error',
+      message: connected ? 'API está online e operacional 🚀' : 'Banco de dados indisponível.',
       database: connected
         ? 'MySQL Conectado 🟢'
-        : productionUnavailable ? 'MySQL indisponível 🔴' : 'Modo Contingência (Sem conexão com MySQL) 🟡',
+        : 'MySQL indisponível 🔴',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });

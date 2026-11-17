@@ -26,6 +26,14 @@ services:
         generateValue: true
       - key: CLIENT_URL
         value: https://frontend-client-f4fn.onrender.com
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SESSION_TTL_SECONDS
+        value: "604800"
+      - key: COOKIE_SAME_SITE
+        value: none
+      - key: MYSQL_EMBEDDED
+        value: "true"
 
   # -------------------------------------------------------------
   # 2. SERVIÇO FRONT-END (React Vite Static Site)
