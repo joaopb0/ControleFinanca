@@ -6,104 +6,6 @@ import { PeriodFilter } from '../../components/reports/PeriodFilter';
 import { ExportControls } from '../../components/reports/ExportControls';
 
 /**
- * Utilitários matemáticos e de data locais para contingência caso a API esteja offline
- */
-function localNormalizeDate(dateStr) {
-  if (!dateStr || typeof dateStr !== 'string') return null;
-  const trimmed = dateStr.trim();
-  const brMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (brMatch) {
-    const [, day, month, year] = brMatch;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
-  const parsed = new Date(trimmed);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-  return null;
-}
-
-function calculateLocalSummary(transactions = [], startDate = '', endDate = '', categoryColors = {}) {
-  const normStart = startDate ? localNormalizeDate(startDate) : null;
-  const normEnd = endDate ? localNormalizeDate(endDate) : null;
-
-  const filtered = transactions.filter((t) => {
-    if (!t) return false;
-    const d = localNormalizeDate(t.date);
-    if (!d) return true;
-    if (normStart && d < normStart) return false;
-    if (normEnd && d > normEnd) return false;
-    return true;
-  });
-
-  let totalIncome = 0;
-  let totalExpenses = 0;
-  const categoryMap = new Map();
-
-  for (const tx of filtered) {
-    const val = Number(tx.value) || 0;
-    const category = (tx.category && typeof tx.category === 'string' && tx.category.trim())
-      ? tx.category.trim()
-      : 'Outros';
-
-    if (val > 0) totalIncome += val;
-    if (val < 0) totalExpenses += Math.abs(val);
-
-    if (!categoryMap.has(category)) {
-      categoryMap.set(category, {
-        category,
-        rawSum: 0,
-        count: 0,
-        positiveSum: 0,
-        negativeSum: 0,
-      });
-    }
-    const catData = categoryMap.get(category);
-    catData.rawSum += val;
-    catData.count += 1;
-    if (val > 0) catData.positiveSum += val;
-    if (val < 0) catData.negativeSum += Math.abs(val);
-  }
-
-  const categoryBreakdown = [];
-  for (const [cat, data] of categoryMap.entries()) {
-    const isIncome = data.rawSum > 0 || (data.rawSum === 0 && data.positiveSum > 0);
-    const type = isIncome ? 'income' : 'expense';
-    const amount = Math.abs(data.rawSum);
-    let percentage = 0;
-    if (type === 'income' && totalIncome > 0) {
-      percentage = (amount / totalIncome) * 100;
-    } else if (type === 'expense' && totalExpenses > 0) {
-      percentage = (amount / totalExpenses) * 100;
-    }
-
-    categoryBreakdown.push({
-      category: cat,
-      type,
-      amount: Math.round(amount * 100) / 100,
-      percentage: Math.round(percentage * 10) / 10,
-      count: data.count,
-      color: categoryColors[cat] || '#94a3b8',
-    });
-  }
-
-  categoryBreakdown.sort((a, b) => {
-    if (a.type !== b.type) return a.type === 'expense' ? -1 : 1;
-    return b.amount - a.amount;
-  });
-
-  return {
-    totals: {
-      income: Math.round(totalIncome * 100) / 100,
-      expenses: Math.round(totalExpenses * 100) / 100,
-      netBalance: Math.round((totalIncome - totalExpenses) * 100) / 100,
-      transactionCount: filtered.length,
-    },
-    categoryBreakdown,
-  };
-}
-
-/**
  * ReportsScreen Component
  * Tela principal do Gerador de Relatórios Financeiros (Escopo João).
  * Apresenta o painel de resumo consolidado, filtros por período e gatilhos de exportação (PDF e CSV).
@@ -115,8 +17,12 @@ export function ReportsScreen({
 }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [summaryData, setSummaryData] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [report, setReport] = useState(null);
+  const hasTransactions = transactions && transactions.length > 0;
+  const currentReport = report?.transactions === transactions && report.startDate === startDate
+    && report.endDate === endDate && report.categoryColors === categoryColors ? report : null;
+  const summaryData = currentReport?.data;
+  const isLoading = hasTransactions && !currentReport;
 
   // Efeito assíncrono para recalcular resumo ao alterar transações ou datas
   useEffect(() => {
@@ -136,19 +42,14 @@ export function ReportsScreen({
       .then((res) => {
         if (!isMounted) return;
         if (res?.data) {
-          setSummaryData(res.data);
+          setReport({ transactions, startDate, endDate, categoryColors, data: res.data });
         } else {
           throw new Error('Resposta sem dados');
         }
       })
       .catch((err) => {
         if (!isMounted) return;
-        console.warn('API de resumo indisponível, calculando localmente:', err.message);
-        const local = calculateLocalSummary(transactions, startDate, endDate, categoryColors);
-        setSummaryData(local);
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
+        setReport({ transactions, startDate, endDate, categoryColors, error: err.message || 'Não foi possível gerar o relatório.' });
       });
 
     return () => {
@@ -156,17 +57,15 @@ export function ReportsScreen({
     };
   }, [transactions, startDate, endDate, categoryColors]);
 
-  const hasTransactions = transactions && transactions.length > 0;
-
   // Derivação de totais e detalhamento
-  const totals = summaryData?.totals || (hasTransactions ? calculateLocalSummary(transactions, startDate, endDate, categoryColors).totals : {
+  const totals = summaryData?.totals || {
     income: 0,
     expenses: 0,
     netBalance: 0,
     transactionCount: 0,
-  });
+  };
 
-  const categoryBreakdown = summaryData?.categoryBreakdown || (hasTransactions ? calculateLocalSummary(transactions, startDate, endDate, categoryColors).categoryBreakdown : []);
+  const categoryBreakdown = summaryData?.categoryBreakdown || [];
 
   return (
     <div className="flex-1 bg-slate-50 py-6 sm:py-8">
@@ -216,6 +115,7 @@ export function ReportsScreen({
         ) : (
           /* Conteúdo com Dados */
           <div className="flex flex-col gap-6">
+            {currentReport?.error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{currentReport.error}</p>}
             {/* 1. Filtro de Período */}
             <PeriodFilter
               startDate={startDate}

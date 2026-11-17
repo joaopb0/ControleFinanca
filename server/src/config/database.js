@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import { runMigrations } from '../migrations/index.js';
 
 dotenv.config();
 
@@ -16,9 +17,12 @@ const retryableErrorCodes = new Set([
 function getConnectionConfig() {
   const hasDbConfig = dbConfigKeys.some((key) => process.env[key] !== undefined);
   const databaseUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
+  const ssl = process.env.DB_SSL === 'true'
+    ? { rejectUnauthorized: true, ...(process.env.DB_SSL_CA && { ca: process.env.DB_SSL_CA }) }
+    : undefined;
 
   if (!hasDbConfig && databaseUrl) {
-    return { uri: databaseUrl };
+    return { uri: databaseUrl, timezone: 'Z', ...(ssl && { ssl }) };
   }
 
   if (process.env.NODE_ENV === 'production') {
@@ -39,6 +43,8 @@ function getConnectionConfig() {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
+    timezone: 'Z',
+    ...(ssl && { ssl }),
   };
 }
 
@@ -88,6 +94,7 @@ export async function initDatabase({ maxAttempts = 1, retryDelayMs = 2000 } = {}
         )
       `);
 
+      await runMigrations(connection);
       isConnected = true;
       console.log('✅ Conexão com o banco de dados MySQL estabelecida com sucesso!');
       console.log('📦 Tabelas `users` e `classification_rules` verificadas/criadas no MySQL.');
@@ -98,6 +105,7 @@ export async function initDatabase({ maxAttempts = 1, retryDelayMs = 2000 } = {}
         ? error.code
         : 'CONFIG_ERROR';
       console.warn(`⚠️ MySQL indisponível (tentativa ${attempt}/${maxAttempts}, código ${errorCode}).`);
+      if (errorCode === 'CONFIG_ERROR') console.error(error.message);
 
       if (attempt === maxAttempts || !retryableErrorCodes.has(errorCode)) {
         return false;
@@ -123,4 +131,10 @@ export async function isDatabaseAvailable() {
 
 export function isDbConnected() {
   return isConnected;
+}
+
+export async function closeDatabase() {
+  if (pool) await pool.end();
+  pool = null;
+  isConnected = false;
 }

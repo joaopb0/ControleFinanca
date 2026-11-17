@@ -37,7 +37,13 @@ export const classifierController = {
         });
       }
 
-      const result = await classifierService.classifyBatch(items, customRules);
+      // Caller-supplied rules are transient inputs, never identifiers used to read
+      // another account's persisted rules. Persisted rules always use req.user.
+      const activeRules = customRules ?? await ClassificationRuleModel.findAll(req.user.id, { activeOnly: true });
+      if (!Array.isArray(activeRules) || activeRules.length > 500) {
+        return res.status(400).json({ success: false, error: { message: 'Regras inválidas ou limite de 500 regras excedido.' } });
+      }
+      const result = await classifierService.classifyBatch(items, activeRules);
 
       return res.status(200).json({
         success: true,
@@ -66,7 +72,7 @@ export const classifierController = {
         });
       }
 
-      const activeRules = await ClassificationRuleModel.findAll({ activeOnly: true });
+      const activeRules = await ClassificationRuleModel.findAll(req.user.id, { activeOnly: true });
       const classification = classifierService.classifyItem(description, activeRules);
 
       const matchedRule = classification.ruleId
