@@ -13,27 +13,14 @@ function formatCurrency(val) {
 }
 
 /**
- * Normalizador local de diacríticos para contingência
- */
-function localNormalize(str) {
-  if (!str) return '';
-  return str
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-/**
  * ClassifiedPreviewTable Component
  * Tabela para visualização e revisão de transações classificadas:
- * - Executa a classificação em lote contra a API ou regras ativas locais.
+ * - Executa a classificação em lote contra a API autenticada.
  * - Exibe contadores de estatísticas (total, classificadas e contingência/fallback).
  * - Usa indicadores não dependentes apenas de cores para valores positivos/negativos (+ / -).
  */
 export function ClassifiedPreviewTable({
   transactions = [],
-  rules = [],
   categoryColors = {},
   onApplyClassified,
 }) {
@@ -47,9 +34,10 @@ export function ClassifiedPreviewTable({
 
     setIsClassifying(true);
     setError(null);
+    setClassifiedData([]);
+    setSummary(null);
 
     try {
-      // 1. Tenta acionar o endpoint do backend POST /api/classifier/classify
       const response = await classifyTransactions({ transactions });
       if (response?.data) {
         setClassifiedData(response.data);
@@ -62,68 +50,7 @@ export function ClassifiedPreviewTable({
         throw new Error('Resposta de classificação em formato inválido.');
       }
     } catch (err) {
-      // 2. Contingência local resiliente caso o servidor esteja offline
-      console.warn('ClassifyBatch via API indisponível, processando localmente:', err.message);
-
-      const activeRules = rules
-        .filter((r) => r.active !== false)
-        .sort((a, b) => (b.priority || 0) - (a.priority || 0));
-
-      let classifiedCount = 0;
-      let fallbackCount = 0;
-
-      const processed = transactions.map((tx) => {
-        const normDesc = localNormalize(tx.description);
-        let matchedRule = null;
-        let matchedKw = null;
-
-        for (const rule of activeRules) {
-          const kws = Array.isArray(rule.keywords)
-            ? rule.keywords
-            : typeof rule.keywords === 'string'
-            ? rule.keywords.split(',')
-            : [];
-
-          for (const kw of kws) {
-            const normKw = localNormalize(kw);
-            if (normKw && normDesc.includes(normKw)) {
-              matchedRule = rule;
-              matchedKw = kw;
-              break;
-            }
-          }
-          if (matchedRule) break;
-        }
-
-        if (matchedRule) {
-          classifiedCount += 1;
-          return {
-            ...tx,
-            category: matchedRule.category,
-            ruleId: matchedRule.id,
-            ruleName: matchedRule.name,
-            matchedKeyword: matchedKw,
-            isFallback: false,
-          };
-        } else {
-          fallbackCount += 1;
-          return {
-            ...tx,
-            category: 'Outros',
-            ruleId: null,
-            ruleName: null,
-            matchedKeyword: null,
-            isFallback: true,
-          };
-        }
-      });
-
-      setClassifiedData(processed);
-      setSummary({
-        total: transactions.length,
-        classified: classifiedCount,
-        fallbackCount,
-      });
+      setError(err.message || 'Não foi possível classificar as transações. Tente novamente.');
     } finally {
       setIsClassifying(false);
     }

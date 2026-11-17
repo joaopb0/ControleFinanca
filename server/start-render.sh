@@ -2,6 +2,13 @@
 set -Eeuo pipefail
 set -m
 
+# Permite usar MySQL persistente externo com a mesma imagem, sem iniciar o efêmero.
+case "${MYSQL_EMBEDDED:-true}" in
+  false) exec npm start ;;
+  true) ;;
+  *) echo 'MYSQL_EMBEDDED deve ser true ou false.' >&2; exit 1 ;;
+esac
+
 for name in MYSQL_ROOT_PASSWORD MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD DB_NAME DB_USER DB_PASSWORD; do
   if [[ -z "${!name:-}" ]]; then
     echo "$name ausente; confira o Environment Group da Render." >&2

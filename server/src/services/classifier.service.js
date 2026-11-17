@@ -1,4 +1,3 @@
-import { ClassificationRuleModel } from '../models/classificationRule.model.js';
 
 /**
  * Normaliza um texto para comparação fonética e gráfica:
@@ -69,22 +68,17 @@ export function classifyItem(item, rules = []) {
  * Classifica um lote de transações ou descrições.
  *
  * @param {Array<Object|string>} items Lista de transações ou strings
- * @param {Array<Object>|null} customRules Regras fornecidas ou null para buscar do modelo
+ * @param {Array<Object>} customRules Regras explícitas, obtidas pelo controller com a identidade da sessão
  * @returns {Promise<Object>} { data, summary: { total, classified, fallbackCount } }
  */
-export async function classifyBatch(items = [], customRules = null) {
+export async function classifyBatch(items = [], customRules = []) {
   if (!Array.isArray(items)) {
     throw new TypeError('O parâmetro items deve ser um array.');
   }
 
-  let activeRules = customRules;
-  if (!activeRules) {
-    activeRules = await ClassificationRuleModel.findAll({ activeOnly: true });
-  } else {
-    activeRules = activeRules
-      .filter((r) => r && r.active)
-      .sort((a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0));
-  }
+  if (!Array.isArray(customRules)) throw new TypeError('As regras devem ser fornecidas explicitamente.');
+  const activeRules = customRules.filter((r) => r && r.active)
+    .sort((a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0));
 
   let classifiedCount = 0;
   let fallbackCount = 0;

@@ -7,7 +7,8 @@ import { UserModel } from '../models/user.model.js';
 export const userController = {
   getAll: async (req, res, next) => {
     try {
-      const users = await UserModel.findAll();
+      const user = await UserModel.findById(req.user.id);
+      const users = user ? [user] : [];
       res.status(200).json({
         success: true,
         count: users.length,
@@ -21,7 +22,7 @@ export const userController = {
   getById: async (req, res, next) => {
     try {
       const { id } = req.params;
-      const user = await UserModel.findById(id);
+      const user = id === req.user.id ? await UserModel.findById(req.user.id) : null;
 
       if (!user) {
         return res.status(404).json({
@@ -39,32 +40,18 @@ export const userController = {
     }
   },
 
-  create: async (req, res, next) => {
-    try {
-      const { name, email, role } = req.body;
-
-      if (!name || !email) {
-        return res.status(400).json({
-          success: false,
-          message: 'Nome e E-mail são obrigatórios.',
-        });
-      }
-
-      const newUser = await UserModel.create({ name, email, role });
-      res.status(201).json({
-        success: true,
-        message: 'Usuário cadastrado com sucesso!',
-        data: newUser,
-      });
-    } catch (error) {
-      next(error);
-    }
+  create: (req, res) => {
+    res.set('Allow', 'GET');
+    return res.status(405).json({
+      success: false,
+      error: { message: 'Cadastre contas pelo endpoint /api/auth/register.' },
+    });
   },
 
   delete: async (req, res, next) => {
     try {
       const { id } = req.params;
-      const deleted = await UserModel.delete(id);
+      const deleted = id === req.user.id ? await UserModel.delete(req.user.id) : false;
 
       if (!deleted) {
         return res.status(404).json({

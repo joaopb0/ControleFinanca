@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import { CsvImportModel } from '../models/csvImport.model.js';
-import { ClassificationRuleModel } from '../models/classificationRule.model.js';
 import { classifyItem } from './classifier.service.js';
 
 function detectCsvSeparator(filePath) {
@@ -87,12 +86,11 @@ function normalizeCsvRowFromText(rawLine, delimiter, headers = []) {
 }
 
 export const csvImportService = {
-  parseCsvFile: async (filePath) => {
+  parseCsvFile: async (filePath, rules = []) => {
     if (!filePath) {
       throw new Error('Arquivo CSV não informado.');
     }
 
-    const rules = await ClassificationRuleModel.findAll({ activeOnly: true });
     const rows = [];
     const content = fs.readFileSync(filePath, 'utf8');
     const lines = content.split(/\r?\n/).filter((line) => line.trim() !== '');

@@ -2,24 +2,12 @@ import React, { useState } from 'react';
 import { testMatch } from '../../services/api';
 
 /**
- * Normalizador local de diacríticos para fallback de teste caso a API esteja temporariamente indisponível
- */
-function localNormalize(str) {
-  if (!str) return '';
-  return str
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-/**
  * ClassificationTester Component
  * Ferramenta interativa para testar a correspondência de palavras-chave e regras em tempo real:
  * - Permite digitar descrições arbitrárias de lançamentos.
  * - Exibe a categoria atribuída, regra correspondente, palavra-chave encontrada e indicação clara de fallback.
  */
-export function ClassificationTester({ rules = [], categoryColors = {} }) {
+export function ClassificationTester({ categoryColors = {} }) {
   const [description, setDescription] = useState('');
   const [result, setResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,7 +22,6 @@ export function ClassificationTester({ rules = [], categoryColors = {} }) {
     setResult(null);
 
     try {
-      // 1. Tenta acionar o endpoint do backend POST /api/classifier/test
       const response = await testMatch(description.trim());
       if (response?.data) {
         setResult(response.data);
@@ -42,52 +29,7 @@ export function ClassificationTester({ rules = [], categoryColors = {} }) {
         throw new Error('Resposta do servidor em formato inesperado.');
       }
     } catch (err) {
-      // 2. Resiliência: fallback local caso o servidor backend esteja indisponível
-      console.warn('API testMatch falhou, aplicando teste local com regras ativas:', err.message);
-
-      const normDesc = localNormalize(description);
-      const activeRules = rules
-        .filter((r) => r.active !== false)
-        .sort((a, b) => (b.priority || 0) - (a.priority || 0));
-
-      let matched = null;
-      let matchedKw = null;
-
-      for (const rule of activeRules) {
-        const keywords = Array.isArray(rule.keywords)
-          ? rule.keywords
-          : typeof rule.keywords === 'string'
-          ? rule.keywords.split(',')
-          : [];
-
-        for (const kw of keywords) {
-          const normKw = localNormalize(kw);
-          if (normKw && normDesc.includes(normKw)) {
-            matched = rule;
-            matchedKw = kw;
-            break;
-          }
-        }
-        if (matched) break;
-      }
-
-      if (matched) {
-        setResult({
-          description: description.trim(),
-          category: matched.category,
-          ruleId: matched.id,
-          matchedKeyword: matchedKw,
-          matchedRuleName: matched.name,
-        });
-      } else {
-        setResult({
-          description: description.trim(),
-          category: 'Outros',
-          ruleId: null,
-          matchedKeyword: null,
-          matchedRuleName: null,
-        });
-      }
+      setError(err.message || 'Não foi possível testar a classificação. Tente novamente.');
     } finally {
       setIsLoading(false);
     }

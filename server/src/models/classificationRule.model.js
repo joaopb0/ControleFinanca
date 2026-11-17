@@ -1,4 +1,5 @@
-import { getDbPool, isDbConnected } from '../config/database.js';
+import { randomUUID } from 'node:crypto';
+import { getDbPool } from '../config/database.js';
 
 export const BASELINE_RULES = [
   {
@@ -118,264 +119,122 @@ export const BASELINE_RULES = [
   },
 ];
 
-// In-memory fallback copy
-let memoryRules = BASELINE_RULES.map((rule) => ({
-  ...rule,
-  keywords: [...rule.keywords],
-}));
+// Every persisted rule belongs to one authenticated user. Legacy NULL owners
+// are intentionally excluded until ownership can be established independently.
+function requireUserId(userId) {
+  if (typeof userId !== 'string' || !userId) {
+    throw new TypeError('A identidade autenticada é obrigatória para acessar regras.');
+  }
+}
 
-/**
- * Normaliza um registro lido do banco de dados MySQL
- */
 function formatDbRow(row) {
   if (!row) return null;
-  let keywords = [];
-  try {
-    keywords = typeof row.keywords === 'string' ? JSON.parse(row.keywords) : row.keywords;
-  } catch {
-    keywords = Array.isArray(row.keywords) ? row.keywords : [];
-  }
-
+  const keywords = typeof row.keywords === 'string' ? JSON.parse(row.keywords) : row.keywords;
   return {
     id: String(row.id),
     name: row.name,
     category: row.category,
     keywords: Array.isArray(keywords) ? keywords : [],
-    priority: Number(row.priority) || 0,
+    priority: Number(row.priority),
     active: Boolean(row.active),
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
   };
 }
 
+const ruleColumns = 'id, name, category, keywords, priority, active, createdAt, updatedAt';
+
 export const ClassificationRuleModel = {
-  /**
-   * Inicializa a tabela classification_rules no MySQL se o banco estiver conectado
-   */
-  initTable: async () => {
-    if (!isDbConnected()) return;
-
-    const pool = getDbPool();
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS classification_rules (
-        id VARCHAR(50) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        category VARCHAR(100) NOT NULL,
-        keywords JSON NOT NULL,
-        priority INT DEFAULT 0,
-        active BOOLEAN DEFAULT TRUE,
-        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_rules_priority_active (active, priority DESC)
-      )
-    `);
-
-    const [rows] = await pool.query('SELECT COUNT(*) as count FROM classification_rules');
-    if (rows[0].count === 0) {
-      for (const rule of BASELINE_RULES) {
-        await pool.query(
-          `INSERT INTO classification_rules (id, name, category, keywords, priority, active, createdAt, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-          [
-            rule.id,
-            rule.name,
-            rule.category,
-            JSON.stringify(rule.keywords),
-            rule.priority,
-            rule.active ? 1 : 0,
-          ]
-        );
-      }
-      console.log('📦 Tabela `classification_rules` inicializada e populada com 8 regras base.');
+  // The caller owns the transaction, including user creation during registration.
+  seedForUser: async (connection, userId) => {
+    requireUserId(userId);
+    // Lock the parent row so simultaneous reset operations cannot duplicate seeds.
+    await connection.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
+    for (const rule of BASELINE_RULES) {
+      await connection.query(
+        'INSERT INTO classification_rules (id, userId, name, category, keywords, priority, active) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [randomUUID(), userId, rule.name, rule.category, JSON.stringify(rule.keywords), rule.priority, rule.active ? 1 : 0],
+      );
     }
   },
 
-  /**
-   * Retorna todas as regras com filtros opcionais
-   */
-  findAll: async ({ activeOnly = false, category = null } = {}) => {
-    if (!isDbConnected()) {
-      let filtered = [...memoryRules];
-      if (activeOnly) {
-        filtered = filtered.filter((r) => r.active === true);
-      }
-      if (category && typeof category === 'string') {
-        filtered = filtered.filter((r) => r.category.toLowerCase() === category.toLowerCase().trim());
-      }
-      return filtered.sort((a, b) => (b.priority - a.priority) || a.name.localeCompare(b.name));
-    }
-
-    const pool = getDbPool();
-    const conditions = [];
-    const params = [];
-
-    if (activeOnly) {
-      conditions.push('active = 1');
-    }
-    if (category && typeof category === 'string') {
+  findAll: async (userId, { activeOnly = false, category = null } = {}) => {
+    requireUserId(userId);
+    const conditions = ['userId = ?'];
+    const params = [userId];
+    if (activeOnly) conditions.push('active = 1');
+    if (typeof category === 'string' && category.trim()) {
       conditions.push('LOWER(category) = LOWER(?)');
       params.push(category.trim());
     }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const query = `SELECT * FROM classification_rules ${whereClause} ORDER BY priority DESC, createdAt DESC, name ASC`;
-    const [rows] = await pool.query(query, params);
+    const [rows] = await getDbPool().query(
+      'SELECT ' + ruleColumns + ' FROM classification_rules WHERE ' + conditions.join(' AND ') + ' ORDER BY priority DESC, createdAt DESC, name ASC',
+      params,
+    );
     return rows.map(formatDbRow);
   },
 
-  /**
-   * Busca uma regra pelo ID
-   */
-  findById: async (id) => {
-    if (!isDbConnected()) {
-      const rule = memoryRules.find((r) => r.id === id);
-      return rule ? { ...rule, keywords: [...rule.keywords] } : null;
-    }
-
-    const pool = getDbPool();
-    const [rows] = await pool.query('SELECT * FROM classification_rules WHERE id = ?', [id]);
-    return rows[0] ? formatDbRow(rows[0]) : null;
-  },
-
-  /**
-   * Cria uma nova regra de classificação
-   */
-  create: async ({ name, category, keywords, priority = 0, active = true }) => {
-    const id = `rule-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const now = new Date().toISOString();
-    const cleanKeywords = Array.isArray(keywords)
-      ? keywords.map((k) => String(k).trim()).filter(Boolean)
-      : [];
-    const numPriority = Number(priority) || 0;
-    const boolActive = Boolean(active);
-
-    const newRule = {
-      id,
-      name: String(name).trim(),
-      category: String(category).trim(),
-      keywords: cleanKeywords,
-      priority: numPriority,
-      active: boolActive,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    if (!isDbConnected()) {
-      memoryRules.unshift(newRule);
-      return { ...newRule, keywords: [...newRule.keywords] };
-    }
-
-    const pool = getDbPool();
-    await pool.query(
-      `INSERT INTO classification_rules (id, name, category, keywords, priority, active, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [
-        id,
-        newRule.name,
-        newRule.category,
-        JSON.stringify(cleanKeywords),
-        numPriority,
-        boolActive ? 1 : 0,
-      ]
+  findById: async (userId, id) => {
+    requireUserId(userId);
+    const [rows] = await getDbPool().query(
+      'SELECT ' + ruleColumns + ' FROM classification_rules WHERE userId = ? AND id = ?',
+      [userId, id],
     );
-
-    return newRule;
+    return formatDbRow(rows[0]);
   },
 
-  /**
-   * Atualiza uma regra existente pelo ID
-   */
-  update: async (id, fields = {}) => {
-    const existing = await ClassificationRuleModel.findById(id);
+  create: async (userId, { name, category, keywords, priority = 0, active = true }) => {
+    requireUserId(userId);
+    const id = randomUUID();
+    await getDbPool().query(
+      'INSERT INTO classification_rules (id, userId, name, category, keywords, priority, active) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, userId, name.trim(), category.trim(), JSON.stringify(keywords), priority, active ? 1 : 0],
+    );
+    return ClassificationRuleModel.findById(userId, id);
+  },
+
+  update: async (userId, id, fields = {}) => {
+    requireUserId(userId);
+    const existing = await ClassificationRuleModel.findById(userId, id);
     if (!existing) return null;
-
-    const now = new Date().toISOString();
     const updated = {
-      ...existing,
-      ...(fields.name !== undefined && { name: String(fields.name).trim() }),
-      ...(fields.category !== undefined && { category: String(fields.category).trim() }),
-      ...(fields.keywords !== undefined && {
-        keywords: Array.isArray(fields.keywords)
-          ? fields.keywords.map((k) => String(k).trim()).filter(Boolean)
-          : existing.keywords,
-      }),
-      ...(fields.priority !== undefined && { priority: Number(fields.priority) || 0 }),
-      ...(fields.active !== undefined && { active: Boolean(fields.active) }),
-      updatedAt: now,
+      name: fields.name ?? existing.name,
+      category: fields.category ?? existing.category,
+      keywords: fields.keywords ?? existing.keywords,
+      priority: fields.priority ?? existing.priority,
+      active: fields.active ?? existing.active,
     };
-
-    if (!isDbConnected()) {
-      const index = memoryRules.findIndex((r) => r.id === id);
-      if (index !== -1) {
-        memoryRules[index] = { ...updated, keywords: [...updated.keywords] };
-      }
-      return updated;
-    }
-
-    const pool = getDbPool();
-    await pool.query(
-      `UPDATE classification_rules
-       SET name = ?, category = ?, keywords = ?, priority = ?, active = ?, updatedAt = NOW()
-       WHERE id = ?`,
-      [
-        updated.name,
-        updated.category,
-        JSON.stringify(updated.keywords),
-        updated.priority,
-        updated.active ? 1 : 0,
-        id,
-      ]
+    const [result] = await getDbPool().query(
+      'UPDATE classification_rules SET name = ?, category = ?, keywords = ?, priority = ?, active = ?, updatedAt = NOW() WHERE userId = ? AND id = ?',
+      [updated.name, updated.category, JSON.stringify(updated.keywords), updated.priority, updated.active ? 1 : 0, userId, id],
     );
-
-    return updated;
+    return result.affectedRows > 0 ? ClassificationRuleModel.findById(userId, id) : null;
   },
 
-  /**
-   * Remove uma regra pelo ID
-   */
-  delete: async (id) => {
-    if (!isDbConnected()) {
-      const index = memoryRules.findIndex((r) => r.id === id);
-      if (index === -1) return false;
-      memoryRules.splice(index, 1);
-      return true;
-    }
-
-    const pool = getDbPool();
-    const [result] = await pool.query('DELETE FROM classification_rules WHERE id = ?', [id]);
+  delete: async (userId, id) => {
+    requireUserId(userId);
+    const [result] = await getDbPool().query(
+      'DELETE FROM classification_rules WHERE userId = ? AND id = ?', [userId, id],
+    );
     return result.affectedRows > 0;
   },
 
-  /**
-   * Restaura todas as regras para o conjunto inicial (seed baseline)
-   */
-  resetToDefaults: async () => {
-    memoryRules = BASELINE_RULES.map((rule) => ({
-      ...rule,
-      keywords: [...rule.keywords],
-    }));
-
-    if (!isDbConnected()) {
-      return [...memoryRules];
+  resetToDefaults: async (userId) => {
+    requireUserId(userId);
+    const connection = await getDbPool().getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
+      await connection.query('DELETE FROM classification_rules WHERE userId = ?', [userId]);
+      await ClassificationRuleModel.seedForUser(connection, userId);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
     }
-
-    const pool = getDbPool();
-    await pool.query('DELETE FROM classification_rules');
-    for (const rule of BASELINE_RULES) {
-      await pool.query(
-        `INSERT INTO classification_rules (id, name, category, keywords, priority, active, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-        [
-          rule.id,
-          rule.name,
-          rule.category,
-          JSON.stringify(rule.keywords),
-          rule.priority,
-          rule.active ? 1 : 0,
-        ]
-      );
-    }
-    return ClassificationRuleModel.findAll();
+    return ClassificationRuleModel.findAll(userId);
   },
 };
 

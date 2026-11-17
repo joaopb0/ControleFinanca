@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import { CsvImportModel } from '../src/models/csvImport.model.js';
 import { csvImportService } from '../src/services/csvImport.service.js';
+import { BASELINE_RULES } from '../src/models/classificationRule.model.js';
 
 test('CsvImportModel deve mapear colunas date, title e amount para o padrão do sistema', () => {
   const row = {
@@ -31,7 +32,7 @@ test('csvImportService deve ler CSV com separador ; e classificar registros auto
   );
 
   try {
-    const result = await csvImportService.parseCsvFile(filePath);
+    const result = await csvImportService.parseCsvFile(filePath, BASELINE_RULES);
 
     assert.equal(result.length, 2);
     assert.equal(result[0].description, 'Supermercado Extra');
@@ -52,7 +53,7 @@ test('csvImportService deve ler CSV padrão com separador , e colunas date,title
   );
 
   try {
-    const result = await csvImportService.parseCsvFile(filePath);
+    const result = await csvImportService.parseCsvFile(filePath, BASELINE_RULES);
 
     assert.equal(result.length, 2);
     assert.equal(result[0].description, 'Supermercado Extra');
@@ -78,7 +79,7 @@ test('csvImportService deve mapear o extrato Sicredi e ignorar colunas técnicas
   );
 
   try {
-    const result = await csvImportService.parseCsvFile(filePath);
+    const result = await csvImportService.parseCsvFile(filePath, BASELINE_RULES);
 
     assert.equal(result.length, 2);
     assert.equal(result[0].date, '2026-09-23');
