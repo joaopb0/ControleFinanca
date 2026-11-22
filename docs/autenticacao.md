@@ -35,7 +35,7 @@ Copiar os exemplos só deve ser feito na primeira configuração, preservando `.
 | --- | --- | --- |
 | `NODE_ENV` | `development` | `production` |
 | `JWT_SECRET` | Aleatório, pelo menos 32 bytes | Segredo próprio do ambiente, gerado pela Render |
-| `CLIENT_URL` | `http://localhost:5173` | Origem HTTPS exata do frontend; múltiplas separadas por vírgula |
+| `CLIENT_URL` | `http://localhost:5173` | Origem HTTPS exata do frontend, sem barra final ou caminho. Separe múltiplas origens por vírgula. |
 | `VITE_API_URL` (client) | `http://localhost:3000/api` | URL HTTPS da API terminada em `/api` |
 | `SESSION_TTL_SECONDS` | `604800` padrão | Inteiro entre 900 e 604800 |
 | `COOKIE_SAME_SITE` | `lax` | `none` para sites distintos; `lax`/`strict` se a topologia permitir |
@@ -80,6 +80,10 @@ Antes de migrar uma base persistente, faça backup e teste uma cópia isolada. S
 O `render.yaml` preserva os dois serviços existentes e o plano Free, adicionando somente configuração. Nenhuma provisão, mudança de plano, sincronização remota ou publicação é feita pela implementação local.
 
 Após revisão e integração pelo fluxo `feature → develop → main`, confirme as URLs reais em CLIENT_URL e VITE_API_URL. O Blueprint declara JWT_SECRET com `generateValue: true` (gera quando não existe), sete dias de sessão e SameSite=None. Valores existentes precisam ser conferidos, especialmente se o Environment Group antigo trouxe um JWT_SECRET vazio/fraco ou COOKIE_SAME_SITE=lax. Configure segredos somente no backend. Uma mudança no VITE_API_URL exige novo build do frontend. As rotas SPA continuam reescritas para index.html, incluindo /login e /register. Consulte a [referência do Blueprint](https://render.com/docs/blueprint-spec#generating-random-secrets).
+
+Em serviços configurados pelo painel, defina `CLIENT_URL` diretamente no backend e `VITE_API_URL` no frontend. Cole a origem do frontend sem barra final e inclua `/api` no fim da URL do backend. Sincronize o Blueprint se ele gerencia os serviços. Ao alterar `VITE_API_URL` pelo painel, use **Save, rebuild, and deploy** para incorporar a URL ao JavaScript publicado. [Variáveis de ambiente no Render](https://render.com/docs/configure-environment-variables)
+
+Após a publicação, abra `/api/health` na URL do backend e confirme `200`. Uma chamada do frontend a `/api/auth/me` deve retornar `401` quando ainda não há sessão, com `Access-Control-Allow-Origin` igual à origem do frontend. O erro `CLIENT_URL deve conter origens completas autorizadas, sem caminho` nos logs indica que a API parou antes de abrir a porta. Já `403` com `Origem não autorizada.` indica que o backend iniciou, mas a origem recebida não está em `CLIENT_URL`.
 
 Na topologia com dois domínios onrender.com, cookies são cross-site: HTTPS, SameSite=None e credenciais são necessários, mas alguns navegadores bloqueiam cookies de terceiros. Para compatibilidade nesses navegadores, use frontend/API sob domínios próprios do mesmo site (por exemplo app.example.com e api.example.com) ou proxy da API na origem do frontend, ajustando URLs e cookies; não remova CSRF nem exponha JWT em armazenamento JS. Veja as [regras de cookies do navegador](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie).
 
