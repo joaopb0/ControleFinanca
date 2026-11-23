@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { CsvImportModel } from '../models/csvImport.model.js';
 import { classifyItem } from './classifier.service.js';
+import { merchantEnrichmentService } from './merchantEnrichment.service.js';
 
 function detectCsvSeparator(filePath) {
   const content = fs.readFileSync(filePath, 'utf8').split(/\r?\n/).filter(Boolean).slice(0, 5).join('\n');
@@ -117,6 +118,15 @@ export const csvImportService = {
         id: `csv-${Date.now()}-${rows.length + 1}`,
         ...classification,
       });
+    }
+
+    const enricher = options.merchantEnrichment ?? merchantEnrichmentService;
+    if (enricher && typeof enricher.enrichTransactions === 'function') {
+      try {
+        return await enricher.enrichTransactions(rows);
+      } catch {
+        return rows.map((row) => ({ ...row, merchant: null }));
+      }
     }
 
     return rows;
