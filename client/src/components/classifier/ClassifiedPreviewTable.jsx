@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { classifyTransactions } from '../../services/api';
+import { MerchantIdentity } from '../import/MerchantIdentity';
 
 /**
  * Utilitário de formatação de moeda brasileira (BRL)
@@ -188,8 +189,8 @@ export function ClassifiedPreviewTable({
                     <td className="px-4 py-2.5 font-mono text-slate-600 whitespace-nowrap">
                       {tx.date}
                     </td>
-                    <td className="px-4 py-2.5 font-semibold text-slate-900">
-                      {tx.description}
+                    <td className="max-w-xs px-4 py-2.5 text-slate-900">
+                      <MerchantIdentity transaction={tx} />
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono font-semibold whitespace-nowrap">
                       <span

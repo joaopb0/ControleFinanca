@@ -1,3 +1,5 @@
+import { MerchantIdentity } from './MerchantIdentity';
+
 function formatBRL(value) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -39,7 +41,7 @@ export function TransactionsTable({
                   {transaction.date}
                 </td>
                 <td className="max-w-xs px-5 py-3.5 text-sm text-slate-800">
-                  <span className="block truncate">{transaction.description}</span>
+                  <MerchantIdentity transaction={transaction} />
                 </td>
                 <td
                   className={`whitespace-nowrap px-5 py-3.5 font-mono text-sm font-semibold ${transaction.value >= 0 ? 'text-emerald-600' : 'text-red-600'}`}
