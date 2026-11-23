@@ -66,6 +66,11 @@ test('Migration de autenticação preserva tabelas e registros legados e pode se
   assert.equal(beforeUsers.length, 2, 'Nenhuma conta conflitante é mesclada ou apagada.');
   await admin.query('DELETE FROM users WHERE id = ?', [conflictingId]);
 
+  await migrateAuthentication(admin);
+  const ownedRuleId = randomUUID();
+  await admin.query('INSERT INTO classification_rules (id, userId, name, category, keywords, priority) VALUES (?, ?, ?, ?, ?, ?)',
+    [ownedRuleId, legacyId, 'Mensalidade personalizada', 'Educação personalizada', JSON.stringify(['mensalidade']), 77]);
+
   process.env.DB_NAME = schema;
   process.env.NODE_ENV = 'test';
   const { initDatabase, getDbPool } = await import('../src/config/database.js');
@@ -79,11 +84,20 @@ test('Migration de autenticação preserva tabelas e registros legados e pode se
   assert.equal(users[0].name, 'Registro legado');
   assert.equal(users[0].email, 'legacy@example.test');
   assert.equal(users[0].passwordHash, null, 'Migration não inventa senha para registro legado.');
-  const [rules] = await admin.query('SELECT id, userId FROM classification_rules');
-  assert.equal(rules.length, 1);
-  assert.equal(rules[0].id, legacyRuleId);
-  assert.equal(rules[0].userId, null, 'Propriedade desconhecida não é atribuída a outra conta.');
-  assert.deepEqual(await ClassificationRuleModel.findAll(legacyId), [], 'Regras particulares legadas ficam isoladas.');
+  const [rules] = await admin.query('SELECT id, userId, categoryId, priority FROM classification_rules');
+  assert.equal(rules.length, 2);
+  assert.equal(rules.find((rule) => rule.id === legacyRuleId).userId, null, 'Propriedade desconhecida não é atribuída a outra conta.');
+  assert.equal(rules.find((rule) => rule.id === legacyRuleId).categoryId, null);
+  const owned = rules.find((rule) => rule.id === ownedRuleId);
+  assert.equal(owned.userId, legacyId);
+  assert.ok(owned.categoryId);
+  assert.equal(owned.priority, 77);
+  const visible = await ClassificationRuleModel.findAll(legacyId);
+  assert.equal(visible.length, 1, 'Somente a regra com proprietário conhecido fica visível.');
+  assert.equal(visible[0].category, 'Educação personalizada');
+  const [categories] = await admin.query('SELECT id, name FROM user_categories WHERE userId = ?', [legacyId]);
+  assert.equal(categories.length, 9);
+  assert.equal(categories.find((category) => category.id === owned.categoryId).name, 'Educação personalizada');
   await assert.rejects(
     admin.query('INSERT INTO users (id, name, email) VALUES (?, ?, ?)', [randomUUID(), 'Duplicada', 'legacy@example.test']),
     { code: 'ER_DUP_ENTRY' },

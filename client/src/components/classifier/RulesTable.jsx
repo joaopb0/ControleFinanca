@@ -15,9 +15,13 @@ export function RulesTable({
   onDeleteRule,
   onResetRules,
   isLoading = false,
+  isSaving = false,
+  loadError = '',
+  onRetry,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const busy = isLoading || isSaving || Boolean(loadError);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   // Categorias únicas presentes nas regras para o filtro
@@ -51,10 +55,10 @@ export function RulesTable({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-display text-lg font-bold text-slate-900 sm:text-xl">
-            Regras de Classificação
+            Regras por palavras-chave
           </h2>
           <p className="text-xs text-slate-500 sm:text-sm">
-            Configure palavras-chave que determinam a categoria automática de cada lançamento.
+            Configure palavras-chave para as descrições que não possuem um padrão pessoal salvo.
           </p>
         </div>
 
@@ -62,9 +66,9 @@ export function RulesTable({
           <button
             type="button"
             onClick={onResetRules}
-            disabled={isLoading}
+            disabled={busy}
             className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            title="Restaurar conjunto de 8 regras padrão"
+            title="Restaurar regras por palavras-chave, preservando os padrões pessoais por descrição exata"
           >
             <span>↻</span>
             <span>Restaurar Padrão</span>
@@ -73,7 +77,7 @@ export function RulesTable({
           <button
             type="button"
             onClick={onAddRule}
-            disabled={isLoading}
+            disabled={busy}
             className="flex items-center gap-1.5 rounded-xl bg-blue-900 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-blue-900/20 hover:bg-blue-800 disabled:opacity-50 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             <span aria-hidden="true">+</span>
@@ -130,7 +134,7 @@ export function RulesTable({
 
       {/* Tabela de Regras */}
       <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full text-left text-xs sm:text-sm text-slate-700" aria-label="Tabela de regras de classificação">
+        <table className="w-full min-w-[960px] text-left text-xs sm:text-sm text-slate-700" aria-label="Tabela de regras de classificação">
           <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-600">
             <tr>
               <th scope="col" className="px-4 py-3 text-center w-16">
@@ -163,6 +167,11 @@ export function RulesTable({
                   </div>
                 </td>
               </tr>
+            ) : loadError ? (
+              <tr><td colSpan={6} className="p-6 text-center">
+                <p role="alert" className="mb-3 text-sm text-red-700">{loadError}</p>
+                <button type="button" onClick={onRetry} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-blue-900">Tentar novamente</button>
+              </td></tr>
             ) : filteredRules.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-12 text-center text-slate-500">
@@ -189,8 +198,8 @@ export function RulesTable({
                         {rule.priority ?? 0}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">
-                      {rule.name}
+                    <td className="max-w-xs break-words px-4 py-3 font-semibold text-slate-900">
+                      <span>{rule.name}</span>
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-800">
@@ -236,6 +245,7 @@ export function RulesTable({
                           <div className="flex items-center gap-1">
                             <button
                               type="button"
+                              disabled={busy}
                               onClick={() => {
                                 onDeleteRule(rule.id);
                                 setDeleteConfirmId(null);
@@ -247,6 +257,7 @@ export function RulesTable({
                             </button>
                             <button
                               type="button"
+                              disabled={busy}
                               onClick={() => setDeleteConfirmId(null)}
                               className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 focus-visible:outline-none"
                               aria-label="Cancelar exclusão"
@@ -258,6 +269,7 @@ export function RulesTable({
                           <>
                             <button
                               type="button"
+                              disabled={busy}
                               onClick={() => onEditRule(rule)}
                               className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors"
                               aria-label={`Editar regra ${rule.name}`}
@@ -266,6 +278,7 @@ export function RulesTable({
                             </button>
                             <button
                               type="button"
+                              disabled={busy}
                               onClick={() => setDeleteConfirmId(rule.id)}
                               className="rounded-lg border border-red-100 bg-red-50/50 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-100/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 transition-colors"
                               aria-label={`Excluir regra ${rule.name}`}
@@ -290,7 +303,7 @@ export function RulesTable({
           Mostrando <strong>{filteredRules.length}</strong> de <strong>{rules.length}</strong> regras cadastradas
         </span>
         <span className="text-[11px] text-slate-400">
-          * Regras com maior prioridade são avaliadas primeiro
+          * Primeiro descrição exata; depois palavras-chave por prioridade
         </span>
       </div>
     </div>

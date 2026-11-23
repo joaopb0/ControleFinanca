@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getDbPool } from '../config/database.js';
+import { CategoryModel } from './category.model.js';
+import { DEFAULT_CATEGORIES } from '../config/categories.js';
 
 export const BASELINE_RULES = [
   {
@@ -134,6 +136,7 @@ function formatDbRow(row) {
     id: String(row.id),
     name: row.name,
     category: row.category,
+    categoryId: row.categoryId,
     keywords: Array.isArray(keywords) ? keywords : [],
     priority: Number(row.priority),
     active: Boolean(row.active),
@@ -142,7 +145,8 @@ function formatDbRow(row) {
   };
 }
 
-const ruleColumns = 'id, name, category, keywords, priority, active, createdAt, updatedAt';
+const ruleColumns = 'id, name, category, categoryId, keywords, priority, active, createdAt, updatedAt';
+const availableCategory = '(categoryId IS NULL OR EXISTS (SELECT 1 FROM user_categories c WHERE c.id = classification_rules.categoryId AND c.userId = classification_rules.userId AND c.deletedAt IS NULL))';
 
 export const ClassificationRuleModel = {
   // The caller owns the transaction, including user creation during registration.
@@ -150,73 +154,78 @@ export const ClassificationRuleModel = {
     requireUserId(userId);
     // Lock the parent row so simultaneous reset operations cannot duplicate seeds.
     await connection.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [userId]);
+    await CategoryModel.seedForUser(connection, userId);
+    const categories = await CategoryModel.findAll(userId, connection);
     for (const rule of BASELINE_RULES) {
+      const systemKey = DEFAULT_CATEGORIES.find((category) => category.name === rule.category).key;
+      const category = categories.find((item) => item.systemKey === systemKey);
       await connection.query(
-        'INSERT INTO classification_rules (id, userId, name, category, keywords, priority, active) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [randomUUID(), userId, rule.name, rule.category, JSON.stringify(rule.keywords), rule.priority, rule.active ? 1 : 0],
+        'INSERT INTO classification_rules (id, userId, name, category, categoryId, keywords, priority, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [randomUUID(), userId, rule.name, category.name, category.id, JSON.stringify(rule.keywords), rule.priority, rule.active ? 1 : 0],
       );
     }
   },
 
-  findAll: async (userId, { activeOnly = false, category = null } = {}) => {
+  findAll: async (userId, { activeOnly = false, category = null } = {}, connection = getDbPool()) => {
     requireUserId(userId);
-    const conditions = ['userId = ?'];
+    const conditions = ['userId = ?', availableCategory];
     const params = [userId];
     if (activeOnly) conditions.push('active = 1');
     if (typeof category === 'string' && category.trim()) {
       conditions.push('LOWER(category) = LOWER(?)');
       params.push(category.trim());
     }
-    const [rows] = await getDbPool().query(
+    const [rows] = await connection.query(
       'SELECT ' + ruleColumns + ' FROM classification_rules WHERE ' + conditions.join(' AND ') + ' ORDER BY priority DESC, createdAt DESC, name ASC',
       params,
     );
     return rows.map(formatDbRow);
   },
 
-  findById: async (userId, id) => {
+  findById: async (userId, id, connection = getDbPool()) => {
     requireUserId(userId);
-    const [rows] = await getDbPool().query(
-      'SELECT ' + ruleColumns + ' FROM classification_rules WHERE userId = ? AND id = ?',
+    const [rows] = await connection.query(
+      'SELECT ' + ruleColumns + ' FROM classification_rules WHERE userId = ? AND id = ? AND ' + availableCategory,
       [userId, id],
     );
     return formatDbRow(rows[0]);
   },
 
-  create: async (userId, { name, category, keywords, priority = 0, active = true }) => {
+  create: async (userId, { name, category, categoryId, keywords, priority = 0, active = true }) => {
     requireUserId(userId);
-    const id = randomUUID();
-    await getDbPool().query(
-      'INSERT INTO classification_rules (id, userId, name, category, keywords, priority, active) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, userId, name.trim(), category.trim(), JSON.stringify(keywords), priority, active ? 1 : 0],
-    );
-    return ClassificationRuleModel.findById(userId, id);
+    return CategoryModel.transaction(userId, async (connection) => {
+      const target = await CategoryModel.resolve(userId, { categoryId, category }, connection);
+      const id = randomUUID();
+      await connection.query(
+        'INSERT INTO classification_rules (id, userId, name, category, categoryId, keywords, priority, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, userId, name.trim(), target.name, target.id, JSON.stringify(keywords), priority, active ? 1 : 0],
+      );
+      return ClassificationRuleModel.findById(userId, id, connection);
+    });
   },
 
   update: async (userId, id, fields = {}) => {
     requireUserId(userId);
-    const existing = await ClassificationRuleModel.findById(userId, id);
-    if (!existing) return null;
-    const updated = {
-      name: fields.name ?? existing.name,
-      category: fields.category ?? existing.category,
-      keywords: fields.keywords ?? existing.keywords,
-      priority: fields.priority ?? existing.priority,
-      active: fields.active ?? existing.active,
-    };
-    const [result] = await getDbPool().query(
-      'UPDATE classification_rules SET name = ?, category = ?, keywords = ?, priority = ?, active = ?, updatedAt = NOW() WHERE userId = ? AND id = ?',
-      [updated.name, updated.category, JSON.stringify(updated.keywords), updated.priority, updated.active ? 1 : 0, userId, id],
-    );
-    return result.affectedRows > 0 ? ClassificationRuleModel.findById(userId, id) : null;
+    return CategoryModel.transaction(userId, async (connection) => {
+      const existing = await ClassificationRuleModel.findById(userId, id, connection);
+      if (!existing) return null;
+      const target = await CategoryModel.resolve(userId,
+        fields.categoryId !== undefined || fields.category !== undefined ? fields : { categoryId: existing.categoryId }, connection);
+      const updated = { ...existing, ...fields };
+      await connection.query(
+        'UPDATE classification_rules SET name = ?, category = ?, categoryId = ?, keywords = ?, priority = ?, active = ?, updatedAt = NOW() WHERE userId = ? AND id = ?',
+        [updated.name, target.name, target.id, JSON.stringify(updated.keywords), updated.priority, updated.active ? 1 : 0, userId, id],
+      );
+      return ClassificationRuleModel.findById(userId, id, connection);
+    });
   },
 
   delete: async (userId, id) => {
     requireUserId(userId);
-    const [result] = await getDbPool().query(
-      'DELETE FROM classification_rules WHERE userId = ? AND id = ?', [userId, id],
-    );
-    return result.affectedRows > 0;
+    return CategoryModel.transaction(userId, async (connection) => {
+      const [result] = await connection.query('DELETE FROM classification_rules WHERE userId = ? AND id = ?', [userId, id]);
+      return result.affectedRows > 0;
+    });
   },
 
   resetToDefaults: async (userId) => {

@@ -1,5 +1,5 @@
 import { classifierService } from '../services/classifier.service.js';
-import { ClassificationRuleModel } from '../models/classificationRule.model.js';
+import { loadClassificationContext } from '../services/classificationContext.service.js';
 
 const MAX_BATCH_SIZE = 5000;
 
@@ -39,11 +39,12 @@ export const classifierController = {
 
       // Caller-supplied rules are transient inputs, never identifiers used to read
       // another account's persisted rules. Persisted rules always use req.user.
-      const activeRules = customRules ?? await ClassificationRuleModel.findAll(req.user.id, { activeOnly: true });
+      const context = await loadClassificationContext(req.user.id);
+      const activeRules = customRules ?? context.rules;
       if (!Array.isArray(activeRules) || activeRules.length > 500) {
         return res.status(400).json({ success: false, error: { message: 'Regras inválidas ou limite de 500 regras excedido.' } });
       }
-      const result = await classifierService.classifyBatch(items, activeRules);
+      const result = await classifierService.classifyBatch(items, activeRules, context);
 
       return res.status(200).json({
         success: true,
@@ -72,8 +73,9 @@ export const classifierController = {
         });
       }
 
-      const activeRules = await ClassificationRuleModel.findAll(req.user.id, { activeOnly: true });
-      const classification = classifierService.classifyItem(description, activeRules);
+      const context = await loadClassificationContext(req.user.id);
+      const activeRules = context.rules;
+      const classification = classifierService.classifyItem(description, activeRules, context);
 
       const matchedRule = classification.ruleId
         ? activeRules.find((r) => r.id === classification.ruleId)
@@ -83,9 +85,7 @@ export const classifierController = {
         success: true,
         data: {
           description,
-          category: classification.category,
-          ruleId: classification.ruleId,
-          matchedKeyword: classification.matchedKeyword,
+          ...classification,
           matchedRuleName: matchedRule ? matchedRule.name : null,
         },
       });

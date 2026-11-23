@@ -35,7 +35,7 @@ export function ClassificationTester({ categoryColors = {} }) {
     }
   };
 
-  const isFallback = result && !result.ruleId;
+  const isFallback = result?.isFallback;
   const catColor = result ? categoryColors[result.category] || '#94a3b8' : null;
 
   return (
@@ -121,12 +121,12 @@ export function ClassificationTester({ categoryColors = {} }) {
                 {isFallback ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/80 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
                     <span>⚠</span>
-                    <span>Fallback Padrão ('Outros')</span>
+                    <span>Categoria de fallback</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-100/80 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
                     <span>✓</span>
-                    <span>Regra Correspondente</span>
+                    <span>{result.preferenceId ? 'Preferência pessoal' : 'Regra correspondente'}</span>
                   </span>
                 )}
               </div>
@@ -140,8 +140,10 @@ export function ClassificationTester({ categoryColors = {} }) {
                     "{result.description}"
                   </code>
                   . O classificador aplicou a regra de contingência segura com a categoria{' '}
-                  <strong>'Outros'</strong>.
+                  <strong>{result.category}</strong>.
                 </p>
+              ) : result.preferenceId ? (
+                <p>Esta descrição corresponde a uma preferência salva na sua conta.</p>
               ) : (
                 <p>
                   Disparada pela regra <strong>"{result.matchedRuleName || 'Regra de Correspondência'}"</strong> através da palavra-chave{' '}

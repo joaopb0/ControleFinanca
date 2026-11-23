@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { fetchRules, createRule, updateRule, deleteRule, resetRules } from '../../services/api';
+import React, { useState } from 'react';
+import { useClassificationSettings } from '../../hooks/useClassificationSettings';
+import { PreferenceModal } from '../../components/classifier/PreferenceModal';
+import { PreferenceGroups } from '../../components/classifier/PreferenceGroups';
+import { DeletePreferenceModal } from '../../components/classifier/DeletePreferenceModal';
 import { RulesTable } from '../../components/classifier/RulesTable';
 import { RuleModal } from '../../components/classifier/RuleModal';
 import { ClassificationTester } from '../../components/classifier/ClassificationTester';
@@ -14,16 +17,18 @@ export function ClassifierScreen({
   transactions = [],
   categories = ['Alimentação', 'Moradia', 'Transporte', 'Lazer', 'Contas', 'Saúde', 'Receita', 'Outros'],
   categoryColors = {},
+  categoryRecords = [],
+  onRulesChange,
   onApplyClassifiedTransactions,
 }) {
-  const [rules, setRules] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const settings = useClassificationSettings({ categoryRecords, onRulesChange });
+  const { rules, isLoading, isSaving } = settings;
   const [notification, setNotification] = useState(null);
 
   // Estado do Modal
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
+  const [deletingPreference, setDeletingPreference] = useState(null);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
@@ -33,30 +38,6 @@ export function ClassifierScreen({
   };
 
 
-
-  useEffect(() => {
-    let isMounted = true;
-    fetchRules()
-      .then((response) => {
-        if (!isMounted) return;
-        if (Array.isArray(response?.data)) {
-          setRules(response.data);
-        } else {
-          throw new Error('A API retornou regras em formato inválido.');
-        }
-      })
-      .catch((err) => {
-        if (!isMounted) return;
-        setNotification({ message: err.message || 'Não foi possível carregar suas regras.', type: 'error' });
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   // Abertura do modal para criação
   const handleOpenCreate = () => {
@@ -72,35 +53,20 @@ export function ClassifierScreen({
 
   // Salvar (criar ou atualizar)
   const handleSaveRule = async (ruleData) => {
-    setIsSaving(true);
     try {
-      if (ruleData.id) {
-        const response = await updateRule(ruleData.id, ruleData);
-        if (!response?.data) throw new Error('A API não confirmou a atualização da regra.');
-        setRules((prev) =>
-          prev.map((r) => (r.id === ruleData.id ? response.data : r)),
-        );
-        showNotification('Regra atualizada com sucesso!');
-      } else {
-        const response = await createRule(ruleData);
-        if (!response?.data) throw new Error('A API não confirmou a criação da regra.');
-        setRules((prev) => [response.data, ...prev]);
-        showNotification('Regra criada com sucesso!');
-      }
+      await settings.save(ruleData);
+      showNotification('Configuração salva com sucesso!');
       setModalOpen(false);
     } catch (error) {
       showNotification(error.message || 'Não foi possível salvar a regra.', 'error');
       throw error;
-    } finally {
-      setIsSaving(false);
     }
   };
 
   // Excluir regra
   const handleDeleteRule = async (id) => {
     try {
-      await deleteRule(id);
-      setRules((prev) => prev.filter((r) => r.id !== id));
+      await settings.remove(id);
       showNotification('Regra excluída com sucesso.');
     } catch (err) {
       showNotification(err.message || 'Erro ao excluir regra.', 'error');
@@ -109,16 +75,11 @@ export function ClassifierScreen({
 
   // Restaurar regras padrão
   const handleResetRules = async () => {
-    setIsLoading(true);
     try {
-      const response = await resetRules();
-      if (!Array.isArray(response?.data)) throw new Error('A API não confirmou a restauração das regras.');
-      setRules(response.data);
+      await settings.reset();
       showNotification('Regras restauradas para os valores padrão!');
     } catch (err) {
       showNotification(err.message || 'Erro ao restaurar regras.', 'error');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -132,14 +93,14 @@ export function ClassifierScreen({
               Classificador de Categorias
             </h1>
             <p className="text-xs sm:text-sm text-slate-500">
-              Configure regras baseadas em palavras-chave para mapear automaticamente cada lançamento financeiro.
+              Gerencie suas descrições exatas e palavras-chave para classificar os próximos extratos.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-3 py-1 text-xs font-semibold text-blue-900">
               <span className="h-2 w-2 rounded-full bg-blue-600 animate-pulse" aria-hidden="true" />
-              <span>{rules.filter((r) => r.active !== false).length} Regras Ativas</span>
+              <span>{settings.loadError ? 'Carregamento indisponível' : `${rules.filter((r) => r.active !== false).length} Regras Ativas`}</span>
             </span>
           </div>
         </div>
@@ -176,18 +137,25 @@ export function ClassifierScreen({
         <div className="flex flex-col gap-6">
           {/* Seção 1: Simulador de Correspondência em Tempo Real */}
           <ClassificationTester
+            key={settings.revision}
             categoryColors={categoryColors}
           />
 
           {/* Seção 2: Tabela de Regras CRUD */}
+          <PreferenceGroups preferences={rules.filter((rule) => rule.type === 'exact')} categoryColors={categoryColors}
+            isLoading={isLoading} isSaving={isSaving} loadError={settings.loadError} onRetry={settings.reload}
+            onEdit={handleOpenEdit} onDelete={setDeletingPreference} />
           <RulesTable
-            rules={rules}
+            rules={rules.filter((rule) => rule.type === 'keywords')}
             categoryColors={categoryColors}
             onAddRule={handleOpenCreate}
             onEditRule={handleOpenEdit}
             onDeleteRule={handleDeleteRule}
             onResetRules={handleResetRules}
             isLoading={isLoading}
+            isSaving={isSaving}
+            loadError={settings.loadError}
+            onRetry={settings.reload}
           />
 
           {/* Seção 3: Pré-visualização e Revisão de Transações em Lote */}
@@ -199,7 +167,13 @@ export function ClassifierScreen({
         </div>
 
         {/* Modal de Criação / Edição */}
-        {modalOpen && (
+        {deletingPreference && <DeletePreferenceModal preference={deletingPreference} onClose={() => setDeletingPreference(null)}
+          onConfirm={async (id) => { await settings.remove(id); showNotification('Padrão pessoal excluído com sucesso.'); }} />}
+        {modalOpen && editingRule?.type === 'exact' && (
+          <PreferenceModal key={editingRule.id} preference={editingRule} categories={categoryRecords}
+            onSave={handleSaveRule} onClose={() => setModalOpen(false)} isSaving={isSaving} />
+        )}
+        {modalOpen && editingRule?.type !== 'exact' && (
           <RuleModal
             key={editingRule?.id || 'new'}
             isOpen={modalOpen}

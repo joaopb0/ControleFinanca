@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
+import { Modal } from '../common/Modal';
 
 /**
  * RuleModal Component
@@ -32,30 +33,11 @@ export function RuleModal({
   const [active, setActive] = useState(() => rule?.active !== false);
   const [error, setError] = useState(null);
 
-  const initialInputRef = useRef(null);
-
-  // Foco inicial acessível no primeiro campo ao abrir
-  useEffect(() => {
-    if (isOpen) {
-      initialInputRef.current?.focus();
-    }
-  }, [isOpen]);
-
-  // Captura tecla Escape para fechar modal
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && isOpen && !isSaving) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isSaving, onClose]);
-
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSaving) return;
     setError(null);
 
     const cleanName = name.trim();
@@ -100,41 +82,7 @@ export function RuleModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-xs transition-opacity"
-      role="presentation"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isSaving) onClose();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="rule-modal-title"
-        className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl transition-all"
-      >
-        {/* Cabeçalho do Modal */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-900 font-bold" aria-hidden="true">
-              {isEditing ? '✎' : '+'}
-            </div>
-            <h2 id="rule-modal-title" className="font-display text-lg font-bold text-slate-900">
-              {isEditing ? 'Editar Regra de Classificação' : 'Nova Regra de Classificação'}
-            </h2>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            aria-label="Fechar diálogo"
-          >
-            ✕
-          </button>
-        </div>
-
+    <Modal isOpen={isOpen} title={isEditing ? 'Editar regra de classificação' : 'Nova regra de classificação'} onClose={onClose} isBusy={isSaving}>
         {/* Mensagem de Erro */}
         {error && (
           <div
@@ -148,13 +96,14 @@ export function RuleModal({
 
         {/* Formulário */}
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
+          <fieldset disabled={isSaving} className="contents">
           {/* Nome da Regra */}
           <div>
             <label htmlFor="rule-name" className="block text-xs font-semibold text-slate-700">
               Nome da Regra <span className="text-red-500">*</span>
             </label>
             <input
-              ref={initialInputRef}
+              data-autofocus
               id="rule-name"
               type="text"
               value={name}
@@ -211,7 +160,7 @@ export function RuleModal({
               className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
             <p className="mt-1 text-[11px] text-slate-400">
-              A correspondência ignora acentos, pontuação e maiúsculas/minúsculas.
+              A correspondência ignora acentos e maiúsculas/minúsculas.
             </p>
           </div>
 
@@ -273,9 +222,9 @@ export function RuleModal({
               <span>{isEditing ? 'Salvar Alterações' : 'Criar Regra'}</span>
             </button>
           </div>
+          </fieldset>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

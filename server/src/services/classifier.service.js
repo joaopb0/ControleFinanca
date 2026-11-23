@@ -1,22 +1,6 @@
 
-/**
- * Normaliza um texto para comparação fonética e gráfica:
- * 1. Decompõe caracteres acentuados usando forma NFD (Unicode Normalization Form D)
- * 2. Remove os diacríticos combinantes (faixa \u0300-\u036f)
- * 3. Converte para minúsculas
- * 4. Remove espaços em branco nas extremidades
- *
- * @param {string} text
- * @returns {string}
- */
-export function normalizeText(text) {
-  if (!text || typeof text !== 'string') return '';
-  return text
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
+import { normalizeText } from '../utils/normalizeText.js';
+export { normalizeText } from '../utils/normalizeText.js';
 
 /**
  * Classifica uma única transação ou descrição com base em uma lista de regras ordenadas.
@@ -25,19 +9,18 @@ export function normalizeText(text) {
  * @param {Array<Object>} rules Lista de regras ativas pré-ordenadas por prioridade decrescente
  * @returns {Object} Dados de classificação { category, ruleId, matchedKeyword }
  */
-export function classifyItem(item, rules = []) {
+export function classifyItem(item, rules = [], { preferences = new Map(), fallback = null } = {}) {
   const description = typeof item === 'string'
     ? item
     : (item && typeof item.description === 'string' ? item.description : '');
 
   const normDesc = normalizeText(description);
+  const fallbackResult = { category: fallback?.name || 'Outros', ...(fallback && { categoryId: fallback.id }), ruleId: null, matchedKeyword: null, isFallback: true };
+  const preference = preferences.get(normDesc);
+  if (preference) return { category: preference.category, categoryId: preference.categoryId, ruleId: null, matchedKeyword: null, preferenceId: preference.id, isFallback: false };
 
   if (!normDesc) {
-    return {
-      category: 'Outros',
-      ruleId: null,
-      matchedKeyword: null,
-    };
+    return fallbackResult;
   }
 
   for (const rule of rules) {
@@ -49,19 +32,17 @@ export function classifyItem(item, rules = []) {
       if (normKw && normDesc.includes(normKw)) {
         return {
           category: rule.category,
+          ...(rule.categoryId && { categoryId: rule.categoryId }),
           ruleId: rule.id,
           matchedKeyword: kw,
+          isFallback: false,
         };
       }
     }
   }
 
   // Fallback obrigatório quando nenhuma regra corresponder
-  return {
-    category: 'Outros',
-    ruleId: null,
-    matchedKeyword: null,
-  };
+  return fallbackResult;
 }
 
 /**
@@ -71,7 +52,7 @@ export function classifyItem(item, rules = []) {
  * @param {Array<Object>} customRules Regras explícitas, obtidas pelo controller com a identidade da sessão
  * @returns {Promise<Object>} { data, summary: { total, classified, fallbackCount } }
  */
-export async function classifyBatch(items = [], customRules = []) {
+export async function classifyBatch(items = [], customRules = [], options = {}) {
   if (!Array.isArray(items)) {
     throw new TypeError('O parâmetro items deve ser um array.');
   }
@@ -85,9 +66,13 @@ export async function classifyBatch(items = [], customRules = []) {
 
   const data = items.map((item, index) => {
     const isString = typeof item === 'string';
-    const classification = classifyItem(item, activeRules);
+    // Exceções manuais pertencem somente ao extrato aberto, nunca à importação.
+    const manualCategory = options.categories?.find((category) => category.id === item?.categoryId);
+    const classification = item?.manualOverride && (!options.categories || manualCategory)
+      ? { category: manualCategory?.name || item.category, categoryId: item.categoryId, ruleId: null, matchedKeyword: null, isFallback: false }
+      : classifyItem(item, activeRules, options);
 
-    if (classification.ruleId !== null) {
+    if (!classification.isFallback) {
       classifiedCount++;
     } else {
       fallbackCount++;
@@ -97,17 +82,14 @@ export async function classifyBatch(items = [], customRules = []) {
       return {
         id: String(index + 1),
         description: item,
-        category: classification.category,
-        ruleId: classification.ruleId,
-        matchedKeyword: classification.matchedKeyword,
+        ...classification,
       };
     }
 
     return {
       ...item,
-      category: classification.category,
-      ruleId: classification.ruleId,
-      matchedKeyword: classification.matchedKeyword,
+      ...classification,
+      preferenceId: classification.preferenceId ?? null,
     };
   });
 

@@ -25,6 +25,7 @@ export function ClassifiedPreviewTable({
   onApplyClassified,
 }) {
   const [classifiedData, setClassifiedData] = useState([]);
+  const [classifiedInput, setClassifiedInput] = useState(null);
   const [summary, setSummary] = useState(null);
   const [isClassifying, setIsClassifying] = useState(false);
   const [error, setError] = useState(null);
@@ -41,10 +42,11 @@ export function ClassifiedPreviewTable({
       const response = await classifyTransactions({ transactions });
       if (response?.data) {
         setClassifiedData(response.data);
+        setClassifiedInput(transactions);
         setSummary(response.summary || {
           total: response.data.length,
-          classified: response.data.filter((t) => t.category !== 'Outros').length,
-          fallbackCount: response.data.filter((t) => t.category === 'Outros').length,
+          classified: response.data.filter((t) => !t.isFallback).length,
+          fallbackCount: response.data.filter((t) => t.isFallback).length,
         });
       } else {
         throw new Error('Resposta de classificação em formato inválido.');
@@ -56,7 +58,7 @@ export function ClassifiedPreviewTable({
     }
   };
 
-  const hasData = classifiedData.length > 0;
+  const hasData = classifiedData.length > 0 && classifiedInput === transactions;
   const listToDisplay = hasData ? classifiedData : transactions;
 
   return (
@@ -115,7 +117,7 @@ export function ClassifiedPreviewTable({
       )}
 
       {/* Cartões de Estatística da Classificação */}
-      {summary && (
+      {summary && hasData && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -137,7 +139,7 @@ export function ClassifiedPreviewTable({
 
           <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">
-              Contingência Fallback ('Outros')
+              Categoria de fallback
             </span>
             <p className="mt-0.5 font-display text-lg font-bold text-amber-900">
               {summary.fallbackCount} ({summary.total > 0 ? Math.round((summary.fallbackCount / summary.total) * 100) : 0}%)
@@ -179,7 +181,7 @@ export function ClassifiedPreviewTable({
               listToDisplay.map((tx, idx) => {
                 const isIncome = Number(tx.value) > 0;
                 const catColor = categoryColors[tx.category] || '#94a3b8';
-                const isFallback = tx.category === 'Outros' || tx.isFallback;
+                const isFallback = tx.isFallback;
 
                 return (
                   <tr key={tx.id || idx} className="hover:bg-slate-50/70 transition-colors">
@@ -215,8 +217,10 @@ export function ClassifiedPreviewTable({
                       {isFallback ? (
                         <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
                           <span>⚠</span>
-                          <span>Fallback ('Outros')</span>
+                          <span>Categoria de fallback</span>
                         </span>
+                      ) : tx.preferenceId || tx.manualOverride ? (
+                        <span className="text-xs font-semibold text-blue-700">{tx.manualOverride ? 'Classificação individual' : 'Preferência pessoal'}</span>
                       ) : tx.matchedKeyword || tx.ruleName ? (
                         <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
                           <span>✓</span>
