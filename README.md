@@ -1,5 +1,9 @@
 # ⚡ Projeto Full-Stack: React + Node.js (Clean Architecture)
 
+Categorias, cores e preferências de classificação são persistidas por usuário. Consulte [Categorias e preferências pessoais](docs/categorias.md) para comportamento, migração e API.
+
+O [Histórico mensal](docs/historico.md) acumula receitas e despesas por mês e categoria ao confirmar a geração do relatório, com controle de duplicação por contribuição de extrato.
+
 Estrutura profissional e padronizada com separação clara de responsabilidades entre o **Front-end (Client)** e o **Back-end (Server)**.
 
 O ControleFinanca exige autenticação real no MySQL. Consulte [Autenticação e configuração](docs/autenticacao.md) para instalação local, variáveis, migração, testes e publicação na Render. Antes de `npm run dev`, instale as dependências e configure `server/.env` e `client/.env` conforme os respectivos `.env.example`; o servidor não inicia sem MySQL e `JWT_SECRET` válidos.

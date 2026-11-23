@@ -86,7 +86,7 @@ function normalizeCsvRowFromText(rawLine, delimiter, headers = []) {
 }
 
 export const csvImportService = {
-  parseCsvFile: async (filePath, rules = []) => {
+  parseCsvFile: async (filePath, rules = [], options = {}) => {
     if (!filePath) {
       throw new Error('Arquivo CSV não informado.');
     }
@@ -111,13 +111,11 @@ export const csvImportService = {
 
       if (!normalized) continue;
 
-      const classification = classifyItem(normalized.description, rules);
+      const classification = classifyItem(normalized.description, rules, options);
       rows.push({
         ...normalized,
         id: `csv-${Date.now()}-${rows.length + 1}`,
-        category: classification.category,
-        ruleId: classification.ruleId,
-        matchedKeyword: classification.matchedKeyword,
+        ...classification,
       });
     }
 

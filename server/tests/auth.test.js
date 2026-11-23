@@ -305,6 +305,12 @@ test('Autenticação HTTP com MySQL real e isolamento entre contas', {
     assert.equal(aliceRules.length, 8);
     assert.equal(bobRules.length, 8);
     assert.equal(aliceRules.some((rule) => bobRules.some((other) => other.id === rule.id)), false);
+    const aliceCategories = (await alice.request('/categories')).data.data;
+    const bobCategories = (await bob.request('/categories')).data.data;
+    assert.equal(aliceCategories.length, 8);
+    assert.equal(bobCategories.length, 8);
+    assert.ok(aliceRules.every((rule) => aliceCategories.some((category) => category.id === rule.categoryId)));
+    assert.equal(aliceCategories.some((category) => bobCategories.some((other) => other.id === category.id)), false);
   });
 
   await t.test('regras personalizadas usam identidade autenticada e impedem IDOR em CRUD', async () => {
@@ -347,6 +353,166 @@ test('Autenticação HTTP com MySQL real e isolamento entre contas', {
     assert.equal((await alice.request(`/classification-rules/${aliceRule.id}`, { method: 'DELETE' })).status, 200);
     assert.equal((await alice.request(`/classification-rules/${aliceRule.id}`)).status, 404);
     assert.equal((await bob.request('/classification-rules')).data.data.length, 8);
+  });
+
+  await t.test('histórico HTTP exige sessão e CSRF e isola totais, exportação e exclusão por conta', async () => {
+    assert.equal((await anonymous.request('/history')).status, 401);
+    assert.equal((await anonymous.request('/history/report')).status, 401);
+    const category = (await alice.request('/categories')).data.data[0];
+    const payload = { batchId: randomUUID(), entries: [{ month: '2026-10', categoryId: category.id, incomeCents: 5000, expenseCents: 1000 }], userId: bobUser.id };
+    assert.equal((await alice.request('/history/preview', { method: 'POST', body: payload, csrf: false })).status, 403);
+    const preview = await alice.request('/history/preview', { method: 'POST', body: payload });
+    assert.equal(preview.status, 200);
+    assert.equal(preview.data.data.mode, 'create');
+    assert.equal((await alice.request('/history')).data.data.months.length, 0, 'prévia não grava totais');
+    const body = { ...payload, requestId: randomUUID(), expectedRevision: preview.data.data.revision, expectedHistoryVersion: preview.data.data.historyVersion, confirmOverlap: false };
+    const responses = await Promise.all([alice.request('/history/contributions', { method: 'POST', body }), alice.request('/history/contributions', { method: 'POST', body })]);
+    assert.ok(responses.every((response) => response.status === 200));
+    assert.equal((await alice.request('/history')).data.data.months[0].incomeCents, 5000);
+    const dashboard = await alice.request('/history/report?from=2026-10&to=2026-10');
+    assert.equal(dashboard.status, 200);
+    assert.equal(dashboard.data.data.totals.income, 50);
+    assert.equal(dashboard.data.data.totals.expenses, 10);
+    assert.equal(dashboard.data.data.categoryBreakdown.length, 2);
+    assert.equal(dashboard.data.data.totals.transactionCount, null);
+    assert.equal((await bob.request('/history/report')).data.data.totals.expenses, 0);
+    assert.equal((await alice.request('/history/report?from=2026-11&to=2026-10')).status, 400);
+    const reportPDF = await alice.request('/history/report/pdf?from=2026-10&to=2026-10');
+    assert.equal(reportPDF.status, 200);
+    assert.equal(reportPDF.data.subarray(0, 5).toString(), '%PDF-');
+    const reportCSV = await alice.request('/history/report/csv?from=2026-10&to=2026-10');
+    assert.equal(reportCSV.status, 200);
+    assert.match(reportCSV.data.toString('utf8'), /Meses no período/);
+    assert.doesNotMatch(reportCSV.data.toString('utf8'), /LANÇAMENTOS DETALHADOS/);
+    assert.equal((await bob.request(`/history?userId=${aliceUser.id}`)).data.data.months.length, 0);
+    assert.equal((await bob.request('/history/preview', { method: 'POST', body: { ...payload, userId: aliceUser.id } })).status, 404);
+    assert.equal((await alice.request('/history?from=2026-13')).status, 400);
+    const csv = await alice.request('/history/export/csv');
+    assert.equal(csv.status, 200);
+    assert.match(csv.headers.get('content-type'), /text\/csv/);
+    assert.match(csv.data.toString('utf8'), /2026-10/);
+    await bob.request('/history', { method: 'DELETE' });
+    assert.equal((await alice.request('/history')).data.data.months.length, 1);
+    assert.equal((await alice.request('/history/months/2026-10', { method: 'DELETE', csrf: false })).status, 403);
+    assert.equal((await alice.request('/history/months/2026-10', { method: 'DELETE' })).status, 200);
+    assert.equal((await alice.request('/history')).data.data.months.length, 0);
+  });
+
+  await t.test('gestão de padrões pessoais lista, edita e exclui somente preferências da sessão', async () => {
+    assert.equal((await anonymous.request('/categories/preferences')).status, 401);
+    assert.equal((await anonymous.request('/categories/preferences/foreign', { method: 'PUT', body: { categoryId: 'foreign' } })).status, 401);
+    assert.equal((await anonymous.request('/categories/preferences/foreign', { method: 'DELETE' })).status, 401);
+    const aliceCategories = (await alice.request('/categories')).data.data;
+    const bobCategories = (await bob.request('/categories')).data.data;
+    const food = aliceCategories.find((category) => category.name === 'Alimentação');
+    const leisure = aliceCategories.find((category) => category.name === 'Lazer');
+    const saved = await alice.request('/categories/preferences', { method: 'PUT', body: { description: 'Mercado para evento', categoryId: leisure.id } });
+    assert.equal(saved.status, 200);
+    const id = saved.data.data.id;
+    const endpoint = `/categories/preferences/${id}`;
+    const list = await alice.request('/categories/preferences?userId=' + bobUser.id);
+    assert.equal(list.status, 200);
+    assert.ok(list.data.data.some((item) => item.id === id && item.categoryId === leisure.id));
+    assert.ok(!list.data.data.some((item) => 'userId' in item || 'descriptionHash' in item));
+    assert.ok(!(await bob.request('/categories/preferences')).data.data.some((item) => item.id === id));
+    assert.equal((await bob.request(endpoint, { method: 'PUT', body: { categoryId: bobCategories[0].id, userId: aliceUser.id } })).status, 404);
+    assert.equal((await bob.request(endpoint, { method: 'DELETE' })).status, 404);
+    assert.equal((await alice.request(endpoint, { method: 'PUT', body: { categoryId: bobCategories[0].id } })).status, 404);
+    assert.equal((await alice.request(endpoint, { method: 'PUT', body: {} })).status, 400);
+    assert.equal((await alice.request(endpoint, { method: 'PUT', body: { categoryId: food.id }, csrf: false })).status, 403);
+    assert.equal((await alice.request(endpoint, { method: 'DELETE', csrf: false })).status, 403);
+    const updated = await alice.request(endpoint, { method: 'PUT', body: { categoryId: food.id, description: 'Não deve mudar', userId: bobUser.id } });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.data.data.categoryId, food.id);
+    assert.equal(updated.data.data.description, 'Mercado para evento');
+    assert.equal((await alice.request('/classification-rules/reset', { method: 'POST' })).status, 200);
+    assert.ok((await alice.request('/categories/preferences')).data.data.some((item) => item.id === id));
+    const matched = await alice.request('/classifier/test', { method: 'POST', body: { description: ' MERCÁDO PARA EVENTO ' } });
+    assert.equal(matched.data.data.preferenceId, id);
+    assert.equal((await alice.request(endpoint, { method: 'DELETE' })).status, 200);
+    assert.equal((await alice.request(endpoint, { method: 'DELETE' })).status, 404);
+    assert.equal((await alice.request(endpoint, { method: 'PUT', body: { categoryId: food.id } })).status, 404);
+    assert.ok(!(await alice.request('/categories/preferences')).data.data.some((item) => item.id === id));
+    const classified = await alice.request('/classifier/test', { method: 'POST', body: { description: 'Mercado para evento' } });
+    assert.equal(classified.data.data.categoryId, food.id);
+    assert.ok(!classified.data.data.preferenceId);
+  });
+
+  await t.test('catálogo pessoal, preferências, importação, renomeação e exclusão preservam isolamento', async () => {
+    assert.equal((await anonymous.request('/categories')).status, 401);
+    assert.equal((await anonymous.request('/categories/preferences/lookup', { method: 'POST', body: { description: 'Mercado Central' } })).status, 401);
+    assert.equal((await alice.request('/categories/preferences/lookup', { method: 'POST', body: { description: '' } })).status, 400);
+    assert.equal((await alice.request('/categories/preferences/lookup', { method: 'POST', body: { description: 'Sem preferência' } })).data.data, null);
+    const bobBefore = (await bob.request('/categories')).data.data;
+    const create = await alice.request('/categories', { method: 'POST', body: { name: 'Educação pessoal', color: '#aabbcc', userId: bobUser.id, systemKey: 'fallback' } });
+    assert.equal(create.status, 201);
+    const category = create.data.data;
+    assert.equal(category.systemKey, null);
+    assert.equal(category.isFallback, false);
+    assert.equal((await alice.request('/categories', { method: 'POST', body: { name: ' EDUCACAO PESSOAL ', color: '#aabbcc' } })).status, 409);
+    assert.equal((await alice.request('/categories', { method: 'POST', body: { name: 'Inválida', color: 'red' } })).status, 400);
+    assert.equal((await bob.request(`/categories/${category.id}`, { method: 'PUT', body: { name: 'Invadida', color: '#112233' } })).status, 404);
+    assert.equal((await bob.request(`/categories/${category.id}`, { method: 'DELETE' })).status, 404);
+    assert.equal((await bob.request('/categories/preferences', { method: 'PUT', body: { description: 'Mercado Central', categoryId: category.id } })).status, 404);
+    const duplicateInOtherAccount = await bob.request('/categories', { method: 'POST', body: { name: category.name, color: '#112233' } });
+    assert.equal(duplicateInOtherAccount.status, 201);
+    assert.equal((await bob.request(`/categories/${duplicateInOtherAccount.data.data.id}`, { method: 'DELETE' })).status, 200);
+
+    const rule = await alice.request('/classification-rules', { method: 'POST', body: { name: 'Mensalidade pessoal', category: category.name, categoryId: category.id, keywords: ['mensalidade pessoal'], priority: 90 } });
+    assert.equal(rule.status, 201);
+    const bobCategory = bobBefore[0];
+    assert.equal((await alice.request('/classification-rules', { method: 'POST', body: { name: 'Não autorizada', category: bobCategory.name, categoryId: bobCategory.id, keywords: ['segredo'] } })).status, 404);
+    assert.equal((await alice.request('/categories/preferences', { method: 'PUT', body: { description: 'Mercádo Central', categoryId: category.id } })).status, 200);
+    const lookup = await alice.request('/categories/preferences/lookup', { method: 'POST', body: { description: ' MERCADO CENTRAL ', userId: bobUser.id } });
+    assert.equal(lookup.status, 200);
+    assert.equal(lookup.data.data.categoryId, category.id);
+    assert.equal((await bob.request('/categories/preferences/lookup', { method: 'POST', body: { description: 'Mercado Central', userId: aliceUser.id } })).data.data, null);
+    assert.equal((await alice.request('/categories/preferences/lookup', { method: 'POST', body: { description: 'Mercado Central' }, csrf: false })).status, 403);
+    const preferred = await alice.request('/classifier/test', { method: 'POST', body: { description: '  MERCADO CENTRAL ' } });
+    assert.equal(preferred.data.data.categoryId, category.id);
+    assert.ok(preferred.data.data.preferenceId);
+    assert.equal(preferred.data.data.isFallback, false);
+    assert.equal((await bob.request('/classifier/test', { method: 'POST', body: { description: 'Mercado Central' } })).data.data.category, 'Alimentação');
+
+    const renamed = await alice.request(`/categories/${category.id}`, { method: 'PUT', body: { name: 'Formação', color: '#123456' } });
+    assert.equal(renamed.status, 200);
+    assert.equal(renamed.data.data.id, category.id);
+    assert.equal((await alice.request(`/classification-rules/${rule.data.data.id}`)).data.data.category, 'Formação');
+    const form = new FormData();
+    form.append('file', new Blob(['date;title;amount\n2026-09-01;MERCADO CENTRAL;-10,00\n2026-09-02;mensalidade pessoal;-50,00\n']), 'extrato.csv');
+    const imported = await alice.request('/upload-csv', { method: 'POST', body: form });
+    assert.equal(imported.status, 200);
+    assert.ok(imported.data.dados.every((row) => row.category === 'Formação' && row.categoryId === category.id));
+
+    const fallback = (await alice.request('/categories')).data.data.find((item) => item.isFallback);
+    assert.equal((await alice.request(`/categories/${fallback.id}`, { method: 'DELETE' })).status, 400);
+    assert.equal((await alice.request(`/categories/${fallback.id}`, { method: 'PUT', body: { name: 'Não classificado', color: '#445566' } })).status, 200);
+    assert.equal((await alice.request('/classifier/test', { method: 'POST', body: { description: 'XYZ sem regra' } })).data.data.category, 'Não classificado');
+    assert.equal((await alice.request(`/categories/${category.id}`, { method: 'DELETE' })).status, 200);
+    assert.equal((await alice.request(`/classification-rules/${rule.data.data.id}`)).status, 404);
+    const [preferences] = await pool.query('SELECT id FROM category_preferences WHERE userId = ? AND categoryId = ?', [aliceUser.id, category.id]);
+    assert.equal(preferences.length, 0);
+    assert.equal((await alice.request('/classifier/test', { method: 'POST', body: { description: 'Mercado Central' } })).data.data.category, 'Alimentação');
+    assert.deepEqual((await bob.request('/categories')).data.data, bobBefore);
+    // Volta apenas o nome do fallback da fixture para os testes posteriores.
+    await alice.request(`/categories/${fallback.id}`, { method: 'PUT', body: { name: 'Outros', color: '#94a3b8' } });
+  });
+
+  await t.test('restaurar padrões preserva fallback renomeado mesmo quando seu nome coincide com categoria excluída', async () => {
+    const categories = (await alice.request('/categories')).data.data;
+    const fallback = categories.find((category) => category.isFallback);
+    const housing = categories.find((category) => category.systemKey === 'housing');
+    assert.equal((await alice.request(`/categories/${housing.id}`, { method: 'DELETE' })).status, 200);
+    assert.equal((await alice.request(`/categories/${fallback.id}`, { method: 'PUT', body: { name: 'Moradia', color: '#445566' } })).status, 200);
+    const reset = await alice.request('/classification-rules/reset', { method: 'POST' });
+    assert.equal(reset.status, 200);
+    assert.equal(reset.data.data.length, 8);
+    const after = (await alice.request('/categories')).data.data;
+    assert.equal(after.filter((category) => category.isFallback).length, 1);
+    assert.equal(after.find((category) => category.isFallback).id, fallback.id);
+    assert.equal((await alice.request('/classifier/test', { method: 'POST', body: { description: 'XYZ sem regra' } })).data.data.categoryId, fallback.id);
+    assert.equal((await alice.request(`/categories/${fallback.id}`, { method: 'DELETE' })).status, 400);
+    await alice.request(`/categories/${fallback.id}`, { method: 'PUT', body: { name: 'Outros', color: '#94a3b8' } });
   });
 
   await t.test('endpoints antigos de usuários só exibem a própria conta e recusam cadastro sem senha', async () => {

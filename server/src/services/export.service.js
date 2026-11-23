@@ -57,7 +57,9 @@ export function generateCSV(summary, transactions = []) {
   lines.push(`${escapeCSV('Receitas Totais')};${escapeCSV(formatBRL(summary?.totals?.income))}`);
   lines.push(`${escapeCSV('Despesas Totais')};${escapeCSV(formatBRL(summary?.totals?.expenses))}`);
   lines.push(`${escapeCSV('Saldo Líquido')};${escapeCSV(formatBRL(summary?.totals?.netBalance))}`);
-  lines.push(`${escapeCSV('Total de Transações')};${escapeCSV(summary?.totals?.transactionCount || 0)}`);
+  lines.push(summary?.totals?.transactionCount === null
+    ? `${escapeCSV('Meses no período')};${escapeCSV(summary.totals.monthCount)}`
+    : `${escapeCSV('Total de Transações')};${escapeCSV(summary?.totals?.transactionCount || 0)}`);
   lines.push('');
 
   // 3. Subtotais por Categoria
@@ -81,7 +83,7 @@ export function generateCSV(summary, transactions = []) {
         escapeCSV(typeLabel),
         escapeCSV(formatBRL(cat.amount)),
         escapeCSV(`${formatBRL(cat.percentage)}%`),
-        escapeCSV(cat.count),
+        escapeCSV(cat.count ?? '-'),
       ].join(';')
     );
   }
@@ -181,7 +183,7 @@ export function generatePDF(summary, transactions = []) {
           color: (summary?.totals?.netBalance || 0) >= 0 ? '#10b981' : '#ef4444',
           bg: '#f8fafc',
         },
-        { label: 'TRANSAÇÕES', val: `${summary?.totals?.transactionCount || 0}`, color: '#3b82f6', bg: '#eff6ff' },
+        { label: summary?.totals?.transactionCount === null ? 'MESES' : 'TRANSAÇÕES', val: `${summary?.totals?.transactionCount === null ? summary.totals.monthCount : summary?.totals?.transactionCount || 0}`, color: '#3b82f6', bg: '#eff6ff' },
       ];
 
       kpis.forEach((kpi, idx) => {
@@ -228,7 +230,7 @@ export function generatePDF(summary, transactions = []) {
         doc.fillColor(typeColor).text(typeLabel, margin + 170, currentY + 6);
         doc.fillColor('#1e293b').text(`R$ ${formatBRL(cat.amount)}`, margin + 250, currentY + 6, { width: 90, align: 'right' });
         doc.fillColor('#475569').text(`${formatBRL(cat.percentage)}%`, margin + 355, currentY + 6, { width: 70, align: 'right' });
-        doc.text(`${cat.count}`, margin + 440, currentY + 6, { width: 60, align: 'right' });
+        doc.text(`${cat.count ?? '-'}`, margin + 440, currentY + 6, { width: 60, align: 'right' });
 
         currentY += 20;
       });

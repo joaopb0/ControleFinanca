@@ -9,11 +9,73 @@ const csrfResponse = () => json({ success: true, data: { csrfToken: 'csrf-anonym
 const user = { id: 'user-a', name: 'Pessoa Teste', email: 'pessoa@example.test' };
 const sessionResponse = () => json({ success: true, data: { user, csrfToken: 'csrf-authenticated' } });
 
+test('histórico usa cookies em leituras e CSRF em prévia, salvamento e exclusão', async (t) => {
+  const calls = [];
+  const client = await setup(t, async (url, config) => {
+    if (url.endsWith('/auth/csrf')) return csrfResponse();
+    calls.push({ url, config });
+    return json({ success: true, data: { months: [] } });
+  });
+  const payload = { batchId: 'batch', entries: [{ month: '2026-10', categoryId: 'own', incomeCents: 100, expenseCents: 0 }] };
+  await client.previewHistory(payload);
+  await client.saveHistory({ ...payload, requestId: 'stable-request' });
+  await client.fetchHistory({ from: '2026-10', to: '2026-11' });
+  await client.deleteHistory('2026-10');
+  await client.fetchHistoryReport({ from: '2026-11', to: '2026-11' });
+  assert.ok(calls.every(({ config }) => config.credentials === 'include'));
+  assert.deepEqual(calls.map(({ config }) => config.method), ['POST', 'POST', 'GET', 'DELETE', 'GET']);
+  assert.ok([0, 1, 3].every((index) => calls[index].config.headers.get('X-CSRF-Token') === 'csrf-anonymous'));
+  assert.deepEqual(JSON.parse(calls[0].config.body), payload);
+  assert.ok(calls[2].url.endsWith('/history?from=2026-10&to=2026-11'));
+  assert.ok(calls[4].url.endsWith('/history/report?from=2026-11&to=2026-11'));
+});
+
+test('CRUD de categorias e preferências reutiliza o transporte autenticado com CSRF', async (t) => {
+  const calls = [];
+  const client = await setup(t, async (url, config) => {
+    if (url.endsWith('/auth/csrf')) return csrfResponse();
+    calls.push({ url, config });
+    return json({ success: true, data: {} });
+  });
+  const fields = { name: 'Educação', color: '#123456' };
+  await client.fetchCategories();
+  await client.createCategory(fields);
+  await client.updateCategory('own-id', fields);
+  await client.saveCategoryPreference({ description: 'Mensalidade', categoryId: 'own-id' });
+  await client.deleteCategory('own-id');
+  await client.getCategoryPreference('PIX para João');
+  assert.deepEqual(calls.map(({ config }) => config.method), ['GET', 'POST', 'PUT', 'PUT', 'DELETE', 'POST']);
+  assert.ok(calls.every(({ config }) => config.credentials === 'include'));
+  assert.ok(calls.slice(1).every(({ config }) => config.headers.get('X-CSRF-Token') === 'csrf-anonymous'));
+  assert.deepEqual(JSON.parse(calls[3].config.body), { description: 'Mensalidade', categoryId: 'own-id' });
+  assert.ok(calls[5].url.endsWith('/categories/preferences/lookup'));
+  assert.deepEqual(JSON.parse(calls[5].config.body), { description: 'PIX para João' });
+  assert.ok(!calls[5].url.includes('João'), 'descrição não aparece na URL');
+});
+
 async function setup(t, implementation) {
   const client = await import(`../src/services/api.js?test=${encodeURIComponent(t.name)}`);
   t.mock.method(globalThis, 'fetch', implementation);
   return client;
 }
+
+test('gestão de padrões pessoais envia cookies, CSRF e apenas categoria na edição', async (t) => {
+  const calls = [];
+  const client = await setup(t, async (url, config) => {
+    if (url.endsWith('/auth/csrf')) return csrfResponse();
+    calls.push({ url, config });
+    return json({ success: true, data: [] });
+  });
+  await client.fetchCategoryPreferences();
+  await client.updateCategoryPreference('pref/id', 'category-id');
+  await client.deleteCategoryPreference('pref/id');
+  assert.deepEqual(calls.map(({ config }) => config.method), ['GET', 'PUT', 'DELETE']);
+  assert.ok(calls.every(({ config }) => config.credentials === 'include'));
+  assert.ok(calls.slice(1).every(({ config }) => config.headers.get('X-CSRF-Token') === 'csrf-anonymous'));
+  assert.ok(calls[0].url.endsWith('/categories/preferences'));
+  assert.ok(calls[1].url.endsWith('/categories/preferences/pref%2Fid'));
+  assert.deepEqual(JSON.parse(calls[1].config.body), { categoryId: 'category-id' });
+});
 
 test('login envia cookies e CSRF e adota somente a identidade retornada pelo servidor', async (t) => {
   const calls = [];

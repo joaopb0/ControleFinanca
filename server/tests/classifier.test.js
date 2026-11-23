@@ -7,6 +7,17 @@ import {
 } from '../src/services/classifier.service.js';
 import { ClassificationRuleModel, BASELINE_RULES } from '../src/models/classificationRule.model.js';
 import { classifierController } from '../src/controllers/classifier.controller.js';
+import { CategoryModel } from '../src/models/category.model.js';
+import { CategoryPreferenceModel } from '../src/models/categoryPreference.model.js';
+
+function mockCategoryContext() {
+  mock.method(CategoryModel, 'transaction', async (userId, operation) => {
+    assert.equal(userId, 'authenticated-user');
+    return operation({});
+  });
+  mock.method(CategoryModel, 'findAll', async () => [{ id: 'fallback', name: 'Outros', isFallback: true }]);
+  mock.method(CategoryPreferenceModel, 'findAll', async () => []);
+}
 
 describe('Classifier Engine & Normalization Suite', () => {
 
@@ -276,6 +287,7 @@ describe('Classifier Engine & Normalization Suite', () => {
 
     it('classify usa a identidade autenticada para buscar regras e preserva o resumo', async (t) => {
       t.after(() => mock.restoreAll());
+      mockCategoryContext();
       mock.method(ClassificationRuleModel, 'findAll', async (userId) => {
         assert.equal(userId, 'authenticated-user');
         return BASELINE_RULES;
@@ -311,6 +323,7 @@ describe('Classifier Engine & Normalization Suite', () => {
 
     it('testMatch consulta somente as regras da identidade autenticada', async (t) => {
       t.after(() => mock.restoreAll());
+      mockCategoryContext();
       mock.method(ClassificationRuleModel, 'findAll', async (userId) => {
         assert.equal(userId, 'authenticated-user');
         return BASELINE_RULES;

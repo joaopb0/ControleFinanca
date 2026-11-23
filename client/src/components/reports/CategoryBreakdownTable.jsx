@@ -65,7 +65,7 @@ export function CategoryBreakdownTable({ breakdown = [], isLoading = false }) {
             ) : breakdown.length === 0 ? (
               <tr>
                 <td colSpan={5} className="py-10 text-center text-slate-400">
-                  Nenhuma transação encontrada para o período selecionado.
+                  Nenhum valor encontrado para o período selecionado.
                 </td>
               </tr>
             ) : (
@@ -75,7 +75,7 @@ export function CategoryBreakdownTable({ breakdown = [], isLoading = false }) {
                 const color = item.color || (isIncome ? '#10b981' : '#f97316');
 
                 return (
-                  <tr key={item.category || index} className="hover:bg-slate-50/70 transition-colors">
+                  <tr key={item.categoryKey || `${item.category}-${item.type}-${index}`} className="hover:bg-slate-50/70 transition-colors">
                     {/* Categoria */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 font-semibold text-slate-900">
@@ -85,6 +85,7 @@ export function CategoryBreakdownTable({ breakdown = [], isLoading = false }) {
                           aria-hidden="true"
                         />
                         <span>{item.category}</span>
+                        {item.archived && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-normal text-slate-500">Arquivada</span>}
                       </div>
                     </td>
 
@@ -103,8 +104,8 @@ export function CategoryBreakdownTable({ breakdown = [], isLoading = false }) {
                     </td>
 
                     {/* Lançamentos */}
-                    <td className="px-4 py-3 text-center font-mono text-slate-600">
-                      {item.count}
+                    <td className="px-4 py-3 text-center font-mono text-slate-600" title={item.count === null ? 'Quantidade de lançamentos indisponível no histórico mensal.' : undefined}>
+                      {item.count ?? '—'}
                     </td>
 
                     {/* Subtotal */}
