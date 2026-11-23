@@ -67,13 +67,13 @@ export const classificationRuleController = {
    */
   create: async (req, res, next) => {
     try {
-      const { name, category, keywords, priority, active } = req.body || {};
+      const { name, category, categoryId, keywords, priority, active } = req.body || {};
 
       const cleanName = typeof name === 'string' ? name.trim() : '';
       const cleanCategory = typeof category === 'string' ? category.trim() : '';
       const cleanKeywords = parseKeywords(keywords);
 
-      if (!cleanName || cleanName.length < 2 || !cleanCategory || cleanCategory.length < 2 || cleanKeywords.length === 0) {
+      if (!cleanName || cleanName.length < 2 || (categoryId === undefined && cleanCategory.length < 2) || cleanKeywords.length === 0) {
         return res.status(400).json({
           success: false,
           error: {
@@ -88,6 +88,7 @@ export const classificationRuleController = {
       const newRule = await ClassificationRuleModel.create(req.user.id, {
         name: cleanName,
         category: cleanCategory,
+        categoryId,
         keywords: cleanKeywords,
         priority: isNaN(numPriority) ? 0 : numPriority,
         active: boolActive,
@@ -121,8 +122,9 @@ export const classificationRuleController = {
         });
       }
 
-      const { name, category, keywords, priority, active } = req.body || {};
+      const { name, category, categoryId, keywords, priority, active } = req.body || {};
       const updates = {};
+      if (categoryId !== undefined) updates.categoryId = categoryId;
 
       if (name !== undefined) {
         const cleanName = String(name).trim();

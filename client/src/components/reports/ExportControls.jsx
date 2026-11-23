@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { downloadReportCSV, downloadReportPDF } from '../../services/api';
+import { downloadReportCSV, downloadReportPDF, downloadHistoryReportCSV, downloadHistoryReportPDF } from '../../services/api';
 
 /**
  * ExportControls Component
@@ -13,12 +13,14 @@ export function ExportControls({
   startDate = '',
   endDate = '',
   customColors = {},
+  historyFilters = null,
+  hasData,
 }) {
   const [isExportingCSV, setIsExportingCSV] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
-  const hasTransactions = transactions && transactions.length > 0;
+  const hasTransactions = hasData ?? (transactions && transactions.length > 0);
   const isExporting = isExportingCSV || isExportingPDF;
 
   const handleExportCSV = async () => {
@@ -35,7 +37,8 @@ export function ExportControls({
     };
 
     try {
-      await downloadReportCSV(payload, 'relatorio_financeiro.csv');
+      if (historyFilters) await downloadHistoryReportCSV(historyFilters);
+      else await downloadReportCSV(payload, 'relatorio_financeiro.csv');
       setFeedback({
         type: 'success',
         message: 'Relatório CSV gerado e baixado com sucesso!',
@@ -65,7 +68,8 @@ export function ExportControls({
     };
 
     try {
-      await downloadReportPDF(payload, 'relatorio_financeiro.pdf');
+      if (historyFilters) await downloadHistoryReportPDF(historyFilters);
+      else await downloadReportPDF(payload, 'relatorio_financeiro.pdf');
       setFeedback({
         type: 'success',
         message: 'Relatório PDF gerado e baixado com sucesso!',

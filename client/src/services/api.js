@@ -193,6 +193,32 @@ export async function logout() {
   clearSessionState();
 }
 
+// Catálogo e preferências pessoais de categorias
+export const fetchCategories = () => request('/categories');
+export const createCategory = (category) => request('/categories', { method: 'POST', body: JSON.stringify(category) });
+export const updateCategory = (id, category) => request(`/categories/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(category) });
+export const deleteCategory = (id) => request(`/categories/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const saveCategoryPreference = (preference) => request('/categories/preferences', { method: 'PUT', body: JSON.stringify(preference) });
+export const fetchCategoryPreferences = () => request('/categories/preferences');
+export const updateCategoryPreference = (id, categoryId) => request(`/categories/preferences/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ categoryId }) });
+export const deleteCategoryPreference = (id) => request(`/categories/preferences/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const getCategoryPreference = (description) => request('/categories/preferences/lookup', { method: 'POST', body: JSON.stringify({ description }) });
+
+const historyQuery = (filters = {}) => {
+  const query = new URLSearchParams();
+  if (filters.from) query.set('from', filters.from);
+  if (filters.to) query.set('to', filters.to);
+  return query.size ? `?${query}` : '';
+};
+export const previewHistory = (payload) => request('/history/preview', { method: 'POST', body: JSON.stringify(payload) });
+export const saveHistory = (payload) => request('/history/contributions', { method: 'POST', body: JSON.stringify(payload) });
+export const fetchHistory = (filters) => request(`/history${historyQuery(filters)}`);
+export const fetchHistoryReport = (filters) => request(`/history/report${historyQuery(filters)}`);
+export const downloadHistoryReportCSV = (filters) => downloadBlob(`/history/report/csv${historyQuery(filters)}`, {}, 'relatorio_historico.csv');
+export const downloadHistoryReportPDF = (filters) => downloadBlob(`/history/report/pdf${historyQuery(filters)}`, {}, 'relatorio_historico.pdf');
+export const deleteHistory = (month) => request(month ? `/history/months/${encodeURIComponent(month)}` : '/history', { method: 'DELETE' });
+export const downloadHistoryCSV = (filters) => downloadBlob(`/history/export/csv${historyQuery(filters)}`, {}, 'historico.csv');
+
 // Funções de Regras de Classificação
 export const fetchRules = (params = {}) => {
   const query = new URLSearchParams();
@@ -265,6 +291,23 @@ export const downloadReportPDF = (payload, filename = 'relatorio_financeiro.pdf'
   );
 
 export const api = {
+  previewHistory,
+  saveHistory,
+  fetchHistory,
+  fetchHistoryReport,
+  downloadHistoryReportCSV,
+  downloadHistoryReportPDF,
+  deleteHistory,
+  downloadHistoryCSV,
+  fetchCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  saveCategoryPreference,
+  fetchCategoryPreferences,
+  updateCategoryPreference,
+  deleteCategoryPreference,
+  getCategoryPreference,
   // Verificação de saúde da API
   healthCheck: () => request('/health'),
 

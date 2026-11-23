@@ -1,4 +1,5 @@
 import React from 'react';
+import { getMonthlyPeriod } from '../../services/reportPeriod';
 
 /**
  * PeriodFilter Component
@@ -12,8 +13,14 @@ export function PeriodFilter({
   endDate = '',
   onChangePeriod,
   onReset,
+  precision = 'day',
 }) {
+  const monthly = precision === 'month';
   const handleShortcut = (type) => {
+    if (monthly) {
+      onChangePeriod(getMonthlyPeriod(type));
+      return;
+    }
     const today = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const toIso = (d) =>
@@ -46,7 +53,7 @@ export function PeriodFilter({
             Filtro de Período
           </h2>
           <p className="text-xs text-slate-500">
-            Filtre os lançamentos por intervalo de datas para recalcular os relatórios e exportações.
+            {monthly ? 'Selecione meses completos para recalcular o histórico, os totais e as exportações.' : 'Filtre os lançamentos por intervalo de datas para recalcular os relatórios e exportações.'}
           </p>
         </div>
 
@@ -74,10 +81,10 @@ export function PeriodFilter({
 
           <button
             type="button"
-            onClick={() => handleShortcut('last_30_days')}
+            onClick={() => handleShortcut(monthly ? 'last_three_months' : 'last_30_days')}
             className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors"
           >
-            Últimos 30 dias
+            {monthly ? 'Últimos 3 meses' : 'Últimos 30 dias'}
           </button>
 
           {(startDate || endDate) && (
@@ -97,11 +104,11 @@ export function PeriodFilter({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 max-w-lg">
         <div>
           <label htmlFor="period-start-date" className="block text-xs font-semibold text-slate-700">
-            Data Inicial
+            {monthly ? 'Mês Inicial' : 'Data Inicial'}
           </label>
           <input
             id="period-start-date"
-            type="date"
+            type={monthly ? 'month' : 'date'}
             value={startDate}
             onChange={(e) =>
               onChangePeriod({ startDate: e.target.value, endDate })
@@ -112,11 +119,11 @@ export function PeriodFilter({
 
         <div>
           <label htmlFor="period-end-date" className="block text-xs font-semibold text-slate-700">
-            Data Final
+            {monthly ? 'Mês Final' : 'Data Final'}
           </label>
           <input
             id="period-end-date"
-            type="date"
+            type={monthly ? 'month' : 'date'}
             value={endDate}
             onChange={(e) =>
               onChangePeriod({ startDate, endDate: e.target.value })

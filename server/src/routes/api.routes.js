@@ -5,6 +5,8 @@ import userRoutes from './user.routes.js';
 import classificationRuleRoutes from './classificationRule.routes.js';
 import classifierRoutes from './classifier.routes.js';
 import reportRoutes from './report.routes.js';
+import categoryRoutes from './category.routes.js';
+import historyRoutes from './history.routes.js';
 
 const upload = multer({ dest: 'uploads/', limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0, parts: 1 } });
 
@@ -18,5 +20,7 @@ router.use('/users', userRoutes);
 router.use('/classification-rules', classificationRuleRoutes);
 router.use('/classifier', classifierRoutes);
 router.use('/reports', reportRoutes);
+router.use('/categories', categoryRoutes);
+router.use('/history', historyRoutes);
 
 export default router;

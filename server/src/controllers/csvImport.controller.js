@@ -1,5 +1,5 @@
 import { csvImportService } from '../services/csvImport.service.js';
-import { ClassificationRuleModel } from '../models/classificationRule.model.js';
+import { loadClassificationContext } from '../services/classificationContext.service.js';
 import { rm } from 'node:fs/promises';
 
 export const csvImportController = {
@@ -12,8 +12,8 @@ export const csvImportController = {
         });
       }
 
-      const rules = await ClassificationRuleModel.findAll(req.user.id, { activeOnly: true });
-      const dados = await csvImportService.parseCsvFile(req.file.path, rules);
+      const context = await loadClassificationContext(req.user.id);
+      const dados = await csvImportService.parseCsvFile(req.file.path, context.rules, context);
 
       return res.status(200).json({
         success: true,
